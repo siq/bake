@@ -1,3 +1,5 @@
 .project
 *.py[c|o]
 *.sw*
+MANIFEST
+dist
