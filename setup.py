@@ -3,7 +3,7 @@ from distutils.core import setup
 setup(
     name='bake',
     version='1.0.a1',
-    description='A project scripting utility for Python.',
+    description='A project scripting utility.',
     long_description=open('README.rst').read(),
     author='Jordan McCoy',
     author_email='mccoy.jordan@gmail.com',

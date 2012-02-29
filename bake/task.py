@@ -117,22 +117,6 @@ def task(name=None, description=None, supports_dryrun=False, supports_interactiv
 class DumpEnvironment(Task):
     name = 'dump-environment'
     description = 'dumps the runtime environment'
-
-    required_params = {
-        'bundle': 'this is a test of the emergency line wrapping system, because in the end of this line should be properly wrapped',
-        'indent': 'more'
-    }
-
-    optional_params = {
-        'fff': 'rrr'
-    }
-
-
     
     def run(self, runtime, environment):
         runtime.report(environment.dump(), asis=True)
-
-@task()
-def dump(runtime, environment):
-    "testing"
-    runtime.report(environment.dump(), asis=True)
