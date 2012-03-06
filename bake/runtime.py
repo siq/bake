@@ -19,7 +19,7 @@ Useful information here.
 
 class OptionParser(optparse.OptionParser):
     options = (
-        ('-c, --cache [FILE]', 'use specified file as build cache'),
+        ('-c, --cache FILE', 'use specified file as build cache'),
         ('-C, --no-cache', 'ignore build cache'),
         ('-d, --dryrun', 'run tasks in dry-run mode'),
         ('-e, --env FILE', 'populate runtime environment with specified file'),
