@@ -1,6 +1,22 @@
-from os import popen
+from inspect import getargspec
+from logging import Formatter
+from subprocess import Popen, PIPE, STDOUT
 from sys import exc_info
 from traceback import format_tb
+
+class ConditionalFormatter(Formatter):
+    def format(self, record):
+        if record.asis:
+            return record.msg
+        else:
+            return Formatter.format(self, record)
+
+def call_with_supported_params(callable, **params):
+    arguments = getargspec(callable).args
+    for key in params.keys():
+        if key not in arguments:
+            del params[key]
+    return callable(**params)
 
 def import_object(path):
     attr = None
@@ -49,10 +65,10 @@ def recursive_merge(original, addition):
             original[key] = value
     return original
 
-def sh(command):
-    pipe = popen(command)
-    content = pipe.read()
-    return pipe.close(), content
+def shell(invocation, cwd=None):
+    process = Popen(invocation.strip(), stdout=PIPE, stderr=PIPE, shell=True, cwd=cwd)
+    stdout, stderr = process.communicate()
+    return process.returncode, stdout, stderr
 
 def topological_sort(graph):
     queue = []

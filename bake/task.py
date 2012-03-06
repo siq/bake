@@ -1,7 +1,9 @@
 from datetime import datetime
 from textwrap import dedent
 
-from bake.util import propagate_traceback
+from bake.util import call_with_supported_params, propagate_traceback
+
+__all__ = ('Task', 'Tasks', 'task')
 
 class MultipleTasksError(Exception):
     pass
@@ -65,18 +67,19 @@ class Task(object):
     COMPLETED = 'completed'
     FAILED = 'failed'
     PENDING = 'pending'
-    
-    name = None
-    module = None
-    fullname = None
-    description = None
-    notes = None
-    implementation = None
+    SKIPPED = 'skipped'
 
+    description = None
+    fullname = None
+    implementation = None
+    module = None
+    name = None
+    notes = None
+    optional_params = {}
+    required_params = {}
+    requires = []
     supports_dryrun = False
     supports_interactive = False
-    required_params = {}
-    optional_params = {}
 
     def __init__(self, runtime):
         self.exception = None
@@ -85,14 +88,26 @@ class Task(object):
         self.started = None
         self.status = self.PENDING
 
-    def execute(self):
-        self.started = datetime.now()
+    @property
+    def duration(self):
+        return '%0.03fs' % (self.finished - self.started).total_seconds()
 
+    def execute(self, runtime):
         implementation = self.implementation or self.run
+        if runtime.dryrun and not self.supports_dryrun:
+            self.status = self.COMPLETED
+            return
+        if runtime.interactive and not self.supports_interactive:
+            if not runtime.check('execute task %r?' % self.fullname, True):
+                self.status = self.SKIPPED
+                return
+
+        self.started = datetime.now()
         try:
-            implementation(self.runtime, self.runtime.environment)
+            call_with_supported_params(implementation, runtime=runtime,
+                environment=runtime.environment)
         except Exception, exception:
-            self.exception = propagate_traceback(exception)
+            runtime.report('task %r raised exception' % self.fullname, 'error', exception=True)
             self.status = self.FAILED
         else:
             self.status = self.COMPLETED

@@ -102,13 +102,9 @@ class Environment(dict):
                 return
 
         parser = self.Parsers[extension]
-        try:
-            source = parser(path)
-            if source:
-                self.merge(source)
-        except Exception, exception:
-            import traceback; traceback.print_exc()
-            raise RuntimeError('cannot parse %r' % path)
+        source = parser(path)
+        if source:
+            self.merge(source)
 
     def parse_pair(self, pair):
         key, value = pair.split('=', 1)
@@ -148,6 +144,24 @@ def parse_inifile(path):
             namespace[section][key] = parse_value(value)
     return namespace
 
+@Environment.register('.json')
+def parse_json(path):
+    import json
+    openfile = open(path, 'r')
+    try:
+        return json.load(openfile)
+    finally:
+        openfile.close()
+
 @Environment.register('.py')
 def parse_pyfile(path):
     return import_source(path)
+
+@Environment.register('.yaml')
+def parse_yaml(path):
+    import yaml
+    openfile = open(path, 'r')
+    try:
+        return yaml.load(openfile.read())
+    finally:
+        openfile.close()
