@@ -1,3 +1,4 @@
+from bake.path import path
 from bake.task import *
 
-import bake.lib.sphinx
+import bake.lib

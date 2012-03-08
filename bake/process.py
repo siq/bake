@@ -2,6 +2,7 @@ import os
 import shlex
 import subprocess
 from threading import Thread
+from time import time
 
 class ProcessFailure(Exception):
     pass
@@ -20,7 +21,7 @@ class Process(object):
 
         self.cmdline = self._parse_cmdline(cmdline)
 
-    def __call__(self, data=None, timeout=None):
+    def __call__(self, data=None, timeout=None, stream=None):
         def _thread():
             self.process = subprocess.Popen(
                 self.cmdline,
@@ -37,7 +38,20 @@ class Process(object):
         thread = Thread(target=_thread)
         thread.start()
 
-        thread.join(timeout)
+        if stream:
+            delta = time()
+            while thread.isAlive():
+                thread.join(1)
+                stream.write('.')
+                stream.flush()
+                if timeout and (time() - delta) > timeout:
+                    break
+
+            stream.write('\n')
+            stream.flush()
+        else:
+            thread.join(timeout)
+
         if thread.isAlive():
             self.process.terminate()
             thread.join()
@@ -46,9 +60,14 @@ class Process(object):
         return self.returncode
 
     def run(self, runtime, data=None, timeout=None):
-        returncode = self(data, timeout)
+        stream = None
         if runtime.verbose:
-            runtime.report('shell: %s' % ' '.join(self.cmdline), False)
+            stream = runtime.stream
+
+        runtime.report('shell: %s' % ' '.join(self.cmdline), False)
+        returncode = self(data, timeout, stream)
+
+        if runtime.verbose:
             lines = []
             if self.stdout:
                 lines.extend(self.stdout.strip().split('\n'))
@@ -56,13 +75,9 @@ class Process(object):
                 lines.extend(self.stderr.strip().split('\n'))
             lines = '\n'.join('  %s' % line for line in lines)
             runtime.report(lines, False, asis=True)
+
         if returncode != 0:
             raise ProcessFailure(returncode, self)
-
-    def _format_output(self, stream, indent=2):
-        indent = ' ' * indent
-        lines = stream.strip().split('\n')
-        return '\n'.join('%s%s' % (indent, line) for line in lines)
 
     def _parse_cmdline(self, cmdline):
         if isinstance(cmdline, basestring) and not self.shell:

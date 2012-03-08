@@ -3,7 +3,7 @@ from textwrap import dedent
 
 from bake.util import call_with_supported_params, propagate_traceback
 
-__all__ = ('Task', 'Tasks', 'param', 'task')
+__all__ = ('Task', 'TaskError', 'param', 'task')
 
 class param(object):
     """A task parameter."""
@@ -13,6 +13,9 @@ class param(object):
         self.description = description
         self.name = name
         self.required = required
+
+class TaskError(Exception):
+    pass
 
 class MultipleTasksError(Exception):
     pass
@@ -38,7 +41,20 @@ class Tasks(object):
 
 class TaskMeta(type):
     def __new__(metatype, name, bases, namespace):
+        declared_params = namespace.pop('params', [])
         task = type.__new__(metatype, name, bases, namespace)
+
+        params = {}
+        for base in reversed(bases):
+            inherited_params = getattr(base, 'params', None)
+            if inherited_params:
+                for param in inherited_params:
+                    params[param.name] = param
+
+        for param in declared_params:
+            params[param.name] = param
+
+        task.params = params.values()
         if task.name is None or not task.supported:
             return task
 
@@ -131,6 +147,9 @@ class Task(object):
         self.started = datetime.now()
         try:
             call_with_supported_params(implementation, runtime=runtime, environment=environment)
+        except TaskError, exception:
+            runtime.report(exception.args[0], True)
+            self.status = self.FAILED
         except Exception, exception:
             runtime.report('task raised exception', True, True)
             self.status = self.FAILED
@@ -153,10 +172,3 @@ def task(name=None, description=None, supports_dryrun=False, supports_interactiv
             'supports_interactive': supports_interactive,
         })
     return decorator
-
-class DumpEnvironment(Task):
-    name = 'dump-environment'
-    description = 'dumps the runtime environment'
-    
-    def run(self, runtime, environment):
-        runtime.report(environment.dump(), True, asis=True)

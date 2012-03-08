@@ -10,7 +10,7 @@ from traceback import format_exc
 from bake.environment import Environment
 from bake.process import Process
 from bake.task import MultipleTasksError, Tasks, Task
-from bake.util import ConditionalFormatter, import_object, import_source
+from bake.util import import_object, import_source
 
 BAKEFILES = ('bakefile', 'bakefile.py')
 ENV_MODULES = 'BAKE_MODULES'
@@ -95,7 +95,7 @@ class OptionParser(optparse.OptionParser):
         return '\n\n'.join(sections)
 
     def generate_task_help(self, runtime, task):
-        sections = [USAGE % (runtime.executable, task.fullname)]
+        sections = [USAGE % (runtime.executable, task.name)]
         if task.notes:
             sections.append(self._format_text(task.notes))
 
@@ -292,35 +292,10 @@ class Runtime(object):
         self.stream.write(message)
         self.stream.flush()
 
-    def sh(self, cmdline, data=None, environ=None, shell=False, timeout=None):
+    def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None):
         process = Process(cmdline, environ, shell)
         process.run(self, data, timeout)
         return process
-
-    def _configure_logging(self):
-        if self.logger:
-            return
-
-        self.logger = logging.getLogger()
-        if self.quiet:
-            self.logger.setLevel(logging.WARNING)
-        elif self.verbose:
-            self.logger.setLevel(logging.DEBUG)
-        else:
-            self.logger.setLevel(logging.INFO)
-
-        tokens = ['[%s]' % self.executable, '%(message)s']
-        if self.timestamps:
-            tokens.insert(1, '%(asctime)s')
-
-        formatter = ConditionalFormatter(' '.join(tokens), '%Y-%m-%dT%H:%M:%S')
-        if self.logfile:
-            handler = logging.FileHandler(self.logfile)
-        else:
-            handler = logging.StreamHandler(self.stream)
-
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
 
     def _display_help(self, parser, arguments):
         if not arguments:
