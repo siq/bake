@@ -8,6 +8,7 @@ from operator import attrgetter
 from traceback import format_exc
 
 from bake.environment import Environment
+from bake.path import path
 from bake.process import Process
 from bake.task import MultipleTasksError, Tasks, Task
 from bake.util import import_object, import_source
@@ -85,12 +86,12 @@ class OptionParser(optparse.OptionParser):
             options.append(template % (option, description))
 
         sections.append('Options:\n%s' % '\n'.join(options))
-        for module, tasks in sorted(Tasks.by_module.iteritems()):
+        for source, tasks in sorted(Tasks.by_source.iteritems()):
             entries = []
             for name, task in sorted(tasks.iteritems()):
                 description = self._format_text(task.description, indent)
                 entries.append(template % (name, description))
-            sections.append('Tasks from %s:\n%s' % (module, '\n'.join(entries)))
+            sections.append('Tasks from %s:\n%s' % (source, '\n'.join(entries)))
 
         return '\n\n'.join(sections)
 
@@ -144,7 +145,7 @@ class Runtime(object):
         'quiet', 'timestamps', 'timing', 'verbose')
 
     def __init__(self, executable='bake', environment=None, stream=sys.stdout, logger=None, **params):
-        self.context = None
+        self.context = []
         self.environment = Environment(environment or {})
         self.executable = executable
         self.logger = logger
@@ -167,7 +168,7 @@ class Runtime(object):
     def check(self, message, default=False):
         token = {True: 'y', False: 'n'}[default]
         if self.context:
-            message = '[%s] %s' % (self.context, message)
+            message = '[%s] %s' % (self.context[-1].name, message)
 
         message = '%s [%s] ' % (message, token)
         while True:
@@ -178,7 +179,7 @@ class Runtime(object):
                 return False
 
     def execute(self, task):
-        self.context = task
+        self.context.append(task)
         try:
             self._reset_path()
             try:
@@ -203,7 +204,7 @@ class Runtime(object):
                 self.report('task failed%s' % duration, True)
                 return False
         finally:
-            self.context = None
+            self.context.pop()
 
     def invoke(self, invocation):
         parser = OptionParser()
@@ -281,7 +282,7 @@ class Runtime(object):
             return
 
         if self.context and not asis:
-            message = '[%s] %s' % (self.context.name, message)
+            message = '[%s] %s' % (self.context[-1].name, message)
         if self.timestamps:
             message = '%s %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
         if message[-1] != '\n':
@@ -354,7 +355,11 @@ class Runtime(object):
         environment = None
         try:
             if target[-3:] == '.py':
-                namespace = import_source(target)
+                Tasks.current_source = path(target).relpath()
+                try:
+                    namespace = import_source(target)
+                finally:
+                    Tasks.current_source = None
                 environment = namespace.get('environment')
             else:
                 module = import_object(target)

@@ -23,7 +23,8 @@ class MultipleTasksError(Exception):
 class Tasks(object):
     by_fullname = {}
     by_name = {}
-    by_module = {}
+    by_source = {}
+    current_source = None
 
     @classmethod
     def get(cls, name):
@@ -72,11 +73,13 @@ class TaskMeta(type):
         else:
             Tasks.by_name[task.name] = task
 
-        task.module = task.__module__
-        if task.module in Tasks.by_module:
-            Tasks.by_module[task.module][task.name] = task
+        source = Tasks.current_source
+        if source is None:
+            source = task.__module__
+        if source in Tasks.by_source:
+            Tasks.by_source[source][task.name] = task
         else:
-            Tasks.by_module[task.module] = {task.name: task}
+            Tasks.by_source[source] = {task.name: task}
 
         docstring = task.__doc__
         if docstring and not task.notes:
@@ -98,11 +101,11 @@ class Task(object):
     description = None
     fullname = None
     implementation = None
-    module = None
     name = None
     notes = None
     params = []
     requires = []
+    source = None
     supports_dryrun = False
     supports_interactive = False
 
