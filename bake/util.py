@@ -12,7 +12,7 @@ class ConditionalFormatter(Formatter):
             return Formatter.format(self, record)
 
 def call_with_supported_params(callable, **params):
-    arguments = getargspec(callable).args
+    arguments = getargspec(callable)[0]
     for key in params.keys():
         if key not in arguments:
             del params[key]

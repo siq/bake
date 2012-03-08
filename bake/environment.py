@@ -1,27 +1,88 @@
 import os
+import re
 from pprint import pformat
 
 from bake.util import import_object, import_source, recursive_merge
 
-def parse_value(value):
-    candidate = value.lower()
-    if candidate == 'true':
-        return True
-    elif candidate == 'false':
-        return False
+class ParameterParser(object):
+    STRUCTURE_EXPR = re.compile(r'(?:\{[^{\[\]]*?\})|(?:\[[^{}\[]*?\])')
 
-    if '.' in value:
+    @classmethod
+    def parse(cls, value):
+        if value[0] in ('{', '['):
+            return cls._parse_structured_value(value)
+        else:
+            return cls._parse_simple_value(value)
+
+    @classmethod
+    def _parse_simple_value(cls, value):
+        candidate = value.lower()
+        if candidate == 'true':
+            return True
+        elif candidate == 'false':
+            return False
+
+        if '.' in value:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                pass
+
         try:
-            return float(value)
+            return int(value)
         except (TypeError, ValueError):
-            pass
+            return value
 
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        pass
+    @classmethod
+    def _parse_structure(cls, text, structures):
+        head, tail = text[0], text[-1]
+        if head == '{' and tail == '}':
+            tokens = text[1:-1]
+            if tokens:
+                try:
+                    pairs = []
+                    for pair in tokens.split(','):
+                        key, value = pair.split(':')
+                        if value in structures:
+                            value = structures[value]
+                        else:
+                            value = cls._parse_simple_value(value)
+                        pairs.append((key, value))
+                    return dict(pairs)
+                except Exception:
+                    raise ValueError(value)
+            else:
+                return {}
+        elif head == '[' and tail == ']':
+            tokens = text[1:-1]
+            if tokens:
+                values = []
+                for value in tokens.split(','):
+                    if value in structures:
+                        value = structures[value]
+                    else:
+                        value = cls._parse_simple_value(value)
+                    values.append(value)
+                return values
+            else:
+                return []
+        else:
+            raise ValueError(value)
 
-    return value
+    @classmethod
+    def _parse_structured_value(cls, value):
+        expr = cls.STRUCTURE_EXPR
+        structures = {}
+
+        def replace(match):
+            token = '||%d||' % len(structures)
+            structures[token] = cls._parse_structure(match.group(0), structures)
+            return token
+
+        while True:
+            value, count = expr.subn(replace, value)
+            if count == 0:
+                return structures[value]
 
 class Environment(dict):
     """A bake runtime environment."""
@@ -108,7 +169,7 @@ class Environment(dict):
 
     def parse_pair(self, pair):
         key, value = pair.split('=', 1)
-        self[key] = parse_value(value)
+        self.merge({key: ParameterParser.parse(value)})
 
     @classmethod
     def register(cls, *extensions):

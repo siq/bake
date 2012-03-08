@@ -3,7 +3,16 @@ from textwrap import dedent
 
 from bake.util import call_with_supported_params, propagate_traceback
 
-__all__ = ('Task', 'Tasks', 'task')
+__all__ = ('Task', 'Tasks', 'param', 'task')
+
+class param(object):
+    """A task parameter."""
+
+    def __init__(self, name, description=None, required=False, default=None):
+        self.default = default
+        self.description = description
+        self.name = name
+        self.required = required
 
 class MultipleTasksError(Exception):
     pass
@@ -30,7 +39,7 @@ class Tasks(object):
 class TaskMeta(type):
     def __new__(metatype, name, bases, namespace):
         task = type.__new__(metatype, name, bases, namespace)
-        if task.name is None:
+        if task.name is None or not task.supported:
             return task
 
         task.fullname = task.name
@@ -63,6 +72,7 @@ class Task(object):
     """A bake task."""
 
     __metaclass__ = TaskMeta
+    supported = True
 
     COMPLETED = 'completed'
     FAILED = 'failed'
@@ -75,8 +85,7 @@ class Task(object):
     module = None
     name = None
     notes = None
-    optional_params = {}
-    required_params = {}
+    params = []
     requires = []
     supports_dryrun = False
     supports_interactive = False
@@ -93,21 +102,37 @@ class Task(object):
         return '%0.03fs' % (self.finished - self.started).total_seconds()
 
     def execute(self, runtime):
+        environment = runtime.environment
+        for param in self.params:
+            try:
+                value = environment[param.name]
+            except ValueError:
+                runtime.report('task cannot run due to malformed value for %r' % param.name, True)
+                self.status = self.FAILED
+                return
+
+            if value is None:
+                if param.default is not None:
+                    environment[param.name] = param.default
+                elif param.required:
+                    runtime.report('task requires parameter %r' % param.name, True)
+                    self.status = self.FAILED
+                    return
+
         implementation = self.implementation or self.run
         if runtime.dryrun and not self.supports_dryrun:
             self.status = self.COMPLETED
             return
         if runtime.interactive and not self.supports_interactive:
-            if not runtime.check('execute task %r?' % self.fullname, True):
+            if not runtime.check('execute task?', True):
                 self.status = self.SKIPPED
                 return
 
         self.started = datetime.now()
         try:
-            call_with_supported_params(implementation, runtime=runtime,
-                environment=runtime.environment)
+            call_with_supported_params(implementation, runtime=runtime, environment=environment)
         except Exception, exception:
-            runtime.report('task %r raised exception' % self.fullname, 'error', exception=True)
+            runtime.report('task raised exception', True, True)
             self.status = self.FAILED
         else:
             self.status = self.COMPLETED
@@ -134,4 +159,4 @@ class DumpEnvironment(Task):
     description = 'dumps the runtime environment'
     
     def run(self, runtime, environment):
-        runtime.report(environment.dump(), asis=True)
+        runtime.report(environment.dump(), True, asis=True)

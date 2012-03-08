@@ -1,11 +1,14 @@
-import logging
 import optparse
 import os
 import sys
 import textwrap
 from ConfigParser import SafeConfigParser
+from datetime import datetime
+from operator import attrgetter
+from traceback import format_exc
 
 from bake.environment import Environment
+from bake.process import Process
 from bake.task import MultipleTasksError, Tasks, Task
 from bake.util import ConditionalFormatter, import_object, import_source
 
@@ -96,13 +99,16 @@ class OptionParser(optparse.OptionParser):
         if task.notes:
             sections.append(self._format_text(task.notes))
 
-        required = task.required_params
-        optional = task.optional_params
+        required = []
+        optional = []
 
         length = 0
-        for container in (required, optional):
-            for param in container.iterkeys():
-                length = max(length, len(param))
+        for param in task.params:
+            length = max(length, len(param.name))
+            if param.required:
+                required.append(param)
+            else:
+                optional.append(param)
 
         template = '  %%-%ds    %%s' % length
         indent = ' ' * (length + 6)
@@ -119,8 +125,9 @@ class OptionParser(optparse.OptionParser):
 
     def _format_params(self, template, indent, params):
         lines = []
-        for param, description in sorted(params.iteritems()):
-            lines.append(template % (param, self._format_text(description, indent)))
+        for param in sorted(params, key=attrgetter('name')):
+            lines.append(template % (param.name,
+                self._format_text(param.description, indent)))
         return '\n'.join(lines)
 
     def _format_text(self, text, indent='', width=70):
@@ -137,6 +144,7 @@ class Runtime(object):
         'quiet', 'timestamps', 'timing', 'verbose')
 
     def __init__(self, executable='bake', environment=None, stream=sys.stdout, logger=None, **params):
+        self.context = None
         self.environment = Environment(environment or {})
         self.executable = executable
         self.logger = logger
@@ -158,8 +166,10 @@ class Runtime(object):
 
     def check(self, message, default=False):
         token = {True: 'y', False: 'n'}[default]
-        message = '[%s] %s [%s] ' % (self.executable, message, token)
+        if self.context:
+            message = '[%s] %s' % (self.context, message)
 
+        message = '%s [%s] ' % (message, token)
         while True:
             response = raw_input(message) or token
             if response[0] == 'y':
@@ -168,36 +178,39 @@ class Runtime(object):
                 return False
 
     def execute(self, task):
-        self._reset_path()
+        self.context = task
         try:
-            task.execute(self)
-        except Exception:
-            self.report('task %r failed, raising exception' % task.fullname,
-                'error', exception=True)
-            return False
+            self._reset_path()
+            try:
+                task.execute(self)
+            except Exception:
+                self.report('task raised uncaught exception', True, True)
+                return False
 
-        duration = ''
-        if self.timing:
-            duration = ' (%s)' % task.duration
+            duration = ''
+            if self.timing:
+                duration = ' (%s)' % task.duration
 
-        if task.status == task.COMPLETED:
-            self.report('task %r completed%s' % (task.fullname, duration))
-            return True
-        elif task.status == task.SKIPPED:
-            self.report('task %r skipped' % task.fullname, 'error')
-            return True
-        elif self.interactive:
-            return self.check('task %r failed%s; continue?' % (task.fullname, duration))
-        else:
-            self.report('task %r failed%s' % (task.fullname, duration), 'error')
-            return False
+            if task.status == task.COMPLETED:
+                self.report('task completed%s' % duration)
+                return True
+            elif task.status == task.SKIPPED:
+                self.report('task skipped', True)
+                return True
+            elif self.interactive:
+                return self.check('task failed%s; continue?' % duration)
+            else:
+                self.report('task failed%s' % duration, True)
+                return False
+        finally:
+            self.context = None
 
     def invoke(self, invocation):
         parser = OptionParser()
         try:
             options, arguments = parser.parse_args(invocation)
         except RuntimeError, exception:
-            self.report(exception.args[0], 'error')
+            self.report(exception.args[0], True)
             return False
 
         if options.version:
@@ -213,6 +226,7 @@ class Runtime(object):
 
         for addition in (options.pythonpath or []):
             sys.path.insert(0, addition)
+        sys.path.insert(0, '.')
 
         if options.path:
             self.path = options.path
@@ -260,17 +274,28 @@ class Runtime(object):
         for task in self.queue:
             self.execute(task)
 
-    def report(self, message, level='info', asis=False, exception=False):
-        if not self.logger:
-            self._configure_logging()
-        if level == 'debug':
-            token = logging.DEBUG
-        elif level == 'info':
-            token = logging.INFO
-        else:
-            token = logging.ERROR
+    def report(self, message, importance=None, exception=False, asis=False):
+        if not message:
+            return
+        if (self.quiet and importance is not True) or (importance is False and not self.verbose):
+            return
 
-        self.logger.log(token, message, exc_info=exception, extra={'asis': asis})
+        if self.context and not asis:
+            message = '[%s] %s' % (self.context.name, message)
+        if self.timestamps:
+            message = '%s %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
+        if message[-1] != '\n':
+            message += '\n'
+        if exception:
+            message += format_exc()
+
+        self.stream.write(message)
+        self.stream.flush()
+
+    def sh(self, cmdline, data=None, environ=None, shell=False, timeout=None):
+        process = Process(cmdline, environ, shell)
+        process.run(self, data, timeout)
+        return process
 
     def _configure_logging(self):
         if self.logger:
@@ -299,18 +324,18 @@ class Runtime(object):
 
     def _display_help(self, parser, arguments):
         if not arguments:
-            self.report(parser.generate_help(self), asis=True)
+            self.report(parser.generate_help(self))
             return
 
         task = self._find_task(arguments[0])
         if task and task is not True:
-            self.report(parser.generate_task_help(self, task), asis=True)
+            self.report(parser.generate_task_help(self, task))
             return True
         else:
             return task
 
     def _display_version(self):
-        self.report('bake 1.0.a1', asis=True)
+        self.report('bake 1.0.a1')
 
     def _find_bakefile(self, nosearch=False):
         path = self.path
@@ -339,13 +364,13 @@ class Runtime(object):
         try:
             task = Tasks.get(name)
         except MultipleTasksError, exception:
-            self.report('multiple tasks!!!', 'error')
+            self.report('multiple tasks!!!', True)
             return False
         except KeyError:
             if self.interactive:
                 return self.check('cannot find task %r; continue?' % name)
             else:
-                self.report('cannot find task %r' % name, 'error')
+                self.report('cannot find task %r' % name, True)
                 return False
         else:
             return task
@@ -364,7 +389,7 @@ class Runtime(object):
                 if not self.check('failed to load %r; continue?' % target):
                     return False
             else:
-                self.report('failed to load %r' % module, 'error')
+                self.report('failed to load %r' % target, True, True)
                 return False
 
         if environment and isinstance(environment, dict):
@@ -377,13 +402,13 @@ class Runtime(object):
             if self.interactive:
                 return self.check('%s; continue?' % exception.args[0])
             else:
-                self.report(exception.args[0], 'error')
+                self.report(exception.args[0], True)
                 return False
         except Exception, exception:
             if self.interactive:
                 return self.check('failed to parse %s; continue?' % path)
             else:
-                self.report('failed to parse %s' % path, 'error', exception=True)
+                self.report('failed to parse %r' % path, True, True)
                 return False
 
     def _reset_path(self):
@@ -395,15 +420,14 @@ class Runtime(object):
                 if self.interactive:
                     return self.check('failed to change path to %r; continue?' % path)
                 else:
-                    self.report('failed to changed path to %r' % path, 'error')
+                    self.report('failed to changed path to %r' % path, True)
                     return False
 
 def run():
     runtime = Runtime(os.path.basename(sys.argv[0]))
     exitcode = 0
     if runtime.invoke(sys.argv[1:]) is False:
-        runtime.report('aborted', 'error')
+        runtime.report('aborted', True)
         exitcode = 1
 
-    logging.shutdown()
     sys.exit(exitcode)
