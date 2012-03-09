@@ -178,6 +178,13 @@ class Runtime(object):
             elif response[0] == 'n':
                 return False
 
+    def error(self, message, exception=False, asis=False):
+        if not message:
+            return
+        if exception:
+            message = '%s\n%s' % (message.rstrip(), format_exc())
+        self._report_message(message, asis)
+
     def execute(self, task):
         self.context.append(task)
         try:
@@ -185,7 +192,7 @@ class Runtime(object):
             try:
                 task.execute(self)
             except Exception:
-                self.report('task raised uncaught exception', True, True)
+                self.error('task raised uncaught exception', True)
                 return False
 
             duration = ''
@@ -196,22 +203,27 @@ class Runtime(object):
                 self.report('task completed%s' % duration)
                 return True
             elif task.status == task.SKIPPED:
-                self.report('task skipped', True)
+                self.report('task skipped')
                 return True
             elif self.interactive:
                 return self.check('task failed%s; continue?' % duration)
             else:
-                self.report('task failed%s' % duration, True)
+                self.error('task failed%s' % duration)
                 return False
         finally:
             self.context.pop()
+
+    def info(self, message, asis=False):
+        if not (message and self.verbose):
+            return
+        self._report_message(message, asis)
 
     def invoke(self, invocation):
         parser = OptionParser()
         try:
             options, arguments = parser.parse_args(invocation)
         except RuntimeError, exception:
-            self.report(exception.args[0], True)
+            self.errort(exception.args[0])
             return False
 
         if options.version:
@@ -269,29 +281,15 @@ class Runtime(object):
                     return False
 
         if not self.queue:
-            self.report('no tasks specified')
             return True
 
         for task in self.queue:
             self.execute(task)
 
-    def report(self, message, importance=None, exception=False, asis=False):
-        if not message:
+    def report(self, message, asis=False):
+        if not message or self.quiet:
             return
-        if (self.quiet and importance is not True) or (importance is False and not self.verbose):
-            return
-
-        if self.context and not asis:
-            message = '[%s] %s' % (self.context[-1].name, message)
-        if self.timestamps:
-            message = '%s %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
-        if message[-1] != '\n':
-            message += '\n'
-        if exception:
-            message += format_exc()
-
-        self.stream.write(message)
-        self.stream.flush()
+        self._report_message(message, asis)
 
     def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None):
         process = Process(cmdline, environ, shell)
@@ -340,13 +338,13 @@ class Runtime(object):
         try:
             task = Tasks.get(name)
         except MultipleTasksError, exception:
-            self.report('multiple tasks!!!', True)
+            self.error('multiple tasks!!!')
             return False
         except KeyError:
             if self.interactive:
                 return self.check('cannot find task %r; continue?' % name)
             else:
-                self.report('cannot find task %r' % name, True)
+                self.error('cannot find task %r' % name)
                 return False
         else:
             return task
@@ -369,7 +367,7 @@ class Runtime(object):
                 if not self.check('failed to load %r; continue?' % target):
                     return False
             else:
-                self.report('failed to load %r' % target, True, True)
+                self.error('failed to load %r' % target, True)
                 return False
 
         if environment and isinstance(environment, dict):
@@ -382,14 +380,25 @@ class Runtime(object):
             if self.interactive:
                 return self.check('%s; continue?' % exception.args[0])
             else:
-                self.report(exception.args[0], True)
+                self.error(exception.args[0])
                 return False
         except Exception, exception:
             if self.interactive:
                 return self.check('failed to parse %s; continue?' % path)
             else:
-                self.report('failed to parse %r' % path, True, True)
+                self.error('failed to parse %r' % path, True)
                 return False
+
+    def _report_message(self, message, asis=False):
+        if self.context and not asis:
+            message = '[%s] %s' % (self.context[-1].name, message)
+        if self.timestamps:
+            message = '%s %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
+        if message[-1] != '\n':
+            message += '\n'
+
+        self.stream.write(message)
+        self.stream.flush()
 
     def _reset_path(self):
         path = self.path
@@ -400,14 +409,14 @@ class Runtime(object):
                 if self.interactive:
                     return self.check('failed to change path to %r; continue?' % path)
                 else:
-                    self.report('failed to changed path to %r' % path, True)
+                    self.error('failed to changed path to %r' % path)
                     return False
 
 def run():
     runtime = Runtime(os.path.basename(sys.argv[0]))
     exitcode = 0
     if runtime.invoke(sys.argv[1:]) is False:
-        runtime.report('aborted', True)
+        runtime.error('aborted')
         exitcode = 1
 
     sys.exit(exitcode)

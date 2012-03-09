@@ -5,4 +5,4 @@ class DumpEnvironment(Task):
     description = 'dumps the runtime environment'
 
     def run(self, runtime, environment):
-        runtime.report(environment.dump(), True, asis=True)
+        runtime.report(environment.dump(), True)

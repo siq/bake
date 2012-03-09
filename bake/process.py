@@ -64,7 +64,7 @@ class Process(object):
         if runtime.verbose:
             stream = runtime.stream
 
-        runtime.report('shell: %s' % ' '.join(self.cmdline), False)
+        runtime.info('shell: %s' % ' '.join(self.cmdline))
         returncode = self(data, timeout, stream)
 
         if runtime.verbose:
@@ -74,7 +74,7 @@ class Process(object):
             if self.stderr:
                 lines.extend(self.stderr.strip().split('\n'))
             lines = '\n'.join('  %s' % line for line in lines)
-            runtime.report(lines, False, asis=True)
+            runtime.info(lines, True)
 
         if returncode != 0:
             raise ProcessFailure(returncode, self)

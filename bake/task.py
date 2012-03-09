@@ -126,7 +126,7 @@ class Task(object):
             try:
                 value = environment[param.name]
             except ValueError:
-                runtime.report('task cannot run due to malformed value for %r' % param.name, True)
+                runtime.error('task cannot run due to malformed value for %r' % param.name)
                 self.status = self.FAILED
                 return
 
@@ -134,7 +134,7 @@ class Task(object):
                 if param.default is not None:
                     environment[param.name] = param.default
                 elif param.required:
-                    runtime.report('task requires parameter %r' % param.name, True)
+                    runtime.error('task requires parameter %r' % param.name)
                     self.status = self.FAILED
                     return
 
@@ -151,10 +151,10 @@ class Task(object):
         try:
             call_with_supported_params(implementation, runtime=runtime, environment=environment)
         except TaskError, exception:
-            runtime.report(exception.args[0], True)
+            runtime.error(exception.args[0])
             self.status = self.FAILED
         except Exception, exception:
-            runtime.report('task raised exception', True, True)
+            runtime.error('task raised exception', True)
             self.status = self.FAILED
         else:
             self.status = self.COMPLETED
