@@ -1,9 +1,10 @@
 from datetime import datetime
 from textwrap import dedent
+from types import FunctionType
 
 from bake.util import call_with_supported_params, propagate_traceback
 
-__all__ = ('Task', 'TaskError', 'param', 'task')
+__all__ = ('Task', 'TaskError', 'param', 'requires', 'task')
 
 class param(object):
     """A task parameter."""
@@ -14,10 +15,20 @@ class param(object):
         self.name = name
         self.required = required
 
+    def __call__(self, function):
+        try:
+            function.params.append(self)
+        except AttributeError:
+            function.params = [self]
+        return function
+
 class TaskError(Exception):
     pass
 
-class MultipleTasksError(Exception):
+class MultipleTasksError(TaskError):
+    pass
+
+class UnknownTaskError(TaskError):
     pass
 
 class Tasks(object):
@@ -34,11 +45,11 @@ class Tasks(object):
 
         candidate = cls.by_name.get(name)
         if isinstance(candidate, set):
-            raise MultipleTasksError(candidate)
+            raise MultipleTasksError('multiple tasks found for name %r' % name)
         elif candidate:
             return candidate
         else:
-            raise KeyError(name)
+            raise UnknownTaskError('no task named %r' % name)
 
 class TaskMeta(type):
     def __new__(metatype, name, bases, namespace):
@@ -110,6 +121,7 @@ class Task(object):
     supports_interactive = False
 
     def __init__(self, runtime, independent=False):
+        self.dependencies = set()
         self.exception = None
         self.finished = None
         self.independent = independent
@@ -192,14 +204,25 @@ class Task(object):
 
         self.finished = datetime.now()
 
+def requires(*args):
+    def decorator(function):
+        try:
+            function.requires.update(args)
+        except AttributeError:
+            function.requires = set(args)
+        return function
+    return decorator
+
 def task(name=None, description=None, supports_dryrun=False, supports_interactive=False):
     def decorator(function):
         return type(function.__name__, (Task,), {
             '__doc__': function.__doc__ or '',
-            'name': name or function.__name__.lower().replace('_', '-').strip('-'),
+            'name': name or function.__name__,
             'description': description,
             'implementation': staticmethod(function),
             'supports_dryrun': supports_dryrun,
             'supports_interactive': supports_interactive,
+            'params': getattr(function, 'params', []),
+            'requires': getattr(function, 'requires', []),
         })
     return decorator

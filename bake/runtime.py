@@ -10,8 +10,8 @@ from traceback import format_exc
 from bake.environment import Environment
 from bake.path import path
 from bake.process import Process
-from bake.task import MultipleTasksError, Tasks, Task, TaskError
-from bake.util import import_object, import_source
+from bake.task import MultipleTasksError, Tasks, Task, TaskError, UnknownTaskError
+from bake.util import import_object, import_source, topological_sort
 
 BAKEFILES = ('bakefile', 'bakefile.py')
 ENV_MODULES = 'BAKE_MODULES'
@@ -179,16 +179,6 @@ class Runtime(object):
             elif response[0] == 'n':
                 return False
 
-    def enqueue(self, task):
-        if isinstance(task, basestring):
-            implementation = Tasks.get(task)
-            if implementation:
-                task = implementation(self)
-            else:
-                raise TaskError('cannot find nested task %r' % task)
-
-        self.queue.insert(0, task)
-
     def error(self, message, exception=False, asis=False):
         if not message:
             return
@@ -198,13 +188,7 @@ class Runtime(object):
 
     def execute(self, task):
         if isinstance(task, basestring):
-            implementation = Tasks.get(task)
-            if implementation:
-                task = implementation(self)
-            else:
-                self.error('cannot find nested task %r' % task)
-                return False
-
+            task = Tasks.get(task)(self)
         if task.independent:
             self._reset_path()
 
@@ -224,7 +208,7 @@ class Runtime(object):
         try:
             options, arguments = parser.parse_args(invocation)
         except RuntimeError, exception:
-            self.errort(exception.args[0])
+            self.error(exception.args[0])
             return False
 
         if options.version:
@@ -281,10 +265,11 @@ class Runtime(object):
                 elif task is False:
                     return False
 
-        if self.queue:
+        try:
             return self.run()
-        else:
-            return True
+        except TaskError, exception:
+            self.error(exception.args[0])
+            return False
 
     def report(self, message, asis=False):
         if not message or self.quiet:
@@ -292,6 +277,23 @@ class Runtime(object):
         self._report_message(message, asis)
 
     def run(self):
+        queue = self.queue
+        if not queue:
+            return
+
+        tasks = dict((task.name, task) for task in queue)
+        while queue:
+            task = queue.pop(0)
+            for requirement in task.requires:
+                if requirement not in tasks:
+                    required_task = Tasks.get(requirement)(self)
+                    tasks[requirement] = required_task
+                    queue.append(required_task)
+                task.dependencies.add(tasks[requirement])
+
+        graph = dict((task, task.dependencies) for task in tasks.itervalues())
+        self.queue = topological_sort(graph)
+
         while self.queue:
             task = self.queue.pop(0)
             if self.execute(task) is not False:
@@ -348,7 +350,7 @@ class Runtime(object):
         except MultipleTasksError, exception:
             self.error('multiple tasks!!!')
             return False
-        except KeyError:
+        except UnknownTaskError:
             if self.interactive:
                 return self.check('cannot find task %r; continue?' % name)
             else:

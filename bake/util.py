@@ -78,4 +78,5 @@ def topological_sort(graph):
             else:
                 queue.append(target)
 
+    result.reverse()
     return result
