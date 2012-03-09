@@ -109,9 +109,10 @@ class Task(object):
     supports_dryrun = False
     supports_interactive = False
 
-    def __init__(self, runtime):
+    def __init__(self, runtime, independent=False):
         self.exception = None
         self.finished = None
+        self.independent = independent
         self.runtime = runtime
         self.started = None
         self.status = self.PENDING
@@ -121,6 +122,36 @@ class Task(object):
         return '%0.03fs' % (self.finished - self.started).total_seconds()
 
     def execute(self, runtime):
+        try:
+            self._execute_task(runtime)
+        except Exception:
+            self.status = self.FAILED
+            runtime.error('task failed, raising uncaught exception', True)
+            if runtime.interactive:
+                return runtime.check('task failed; continue?')
+            else:
+                return False
+
+        duration = ''
+        if runtime.timing:
+            duration = ' (%s)' % self.duration
+
+        if self.status == self.COMPLETED:
+            runtime.report('task completed%s' % duration)
+            return True
+        elif self.status == self.SKIPPED:
+            runtime.report('task skipped')
+            return True
+        elif runtime.interactive:
+            return runtime.check('task failed%s; continue?' % duration)
+        else:
+            runtime.error('task failed%s' % duration)
+            return False
+
+    def run(self, runtime, environment):
+        raise NotImplementedError()
+
+    def _execute_task(self, runtime):
         environment = runtime.environment
         for param in self.params:
             try:
@@ -160,9 +191,6 @@ class Task(object):
             self.status = self.COMPLETED
 
         self.finished = datetime.now()
-
-    def run(self, runtime, environment):
-        raise NotImplementedError()
 
 def task(name=None, description=None, supports_dryrun=False, supports_interactive=False):
     def decorator(function):

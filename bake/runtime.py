@@ -10,7 +10,7 @@ from traceback import format_exc
 from bake.environment import Environment
 from bake.path import path
 from bake.process import Process
-from bake.task import MultipleTasksError, Tasks, Task
+from bake.task import MultipleTasksError, Tasks, Task, TaskError
 from bake.util import import_object, import_source
 
 BAKEFILES = ('bakefile', 'bakefile.py')
@@ -145,6 +145,7 @@ class Runtime(object):
         'quiet', 'timestamps', 'timing', 'verbose')
 
     def __init__(self, executable='bake', environment=None, stream=sys.stdout, logger=None, **params):
+        self.completed = []
         self.context = []
         self.environment = Environment(environment or {})
         self.executable = executable
@@ -168,7 +169,7 @@ class Runtime(object):
     def check(self, message, default=False):
         token = {True: 'y', False: 'n'}[default]
         if self.context:
-            message = '[%s] %s' % (self.context[-1].name, message)
+            message = '[%s] %s' % (' '.join(self.context), message)
 
         message = '%s [%s] ' % (message, token)
         while True:
@@ -178,6 +179,16 @@ class Runtime(object):
             elif response[0] == 'n':
                 return False
 
+    def enqueue(self, task):
+        if isinstance(task, basestring):
+            implementation = Tasks.get(task)
+            if implementation:
+                task = implementation(self)
+            else:
+                raise TaskError('cannot find nested task %r' % task)
+
+        self.queue.insert(0, task)
+
     def error(self, message, exception=False, asis=False):
         if not message:
             return
@@ -186,30 +197,20 @@ class Runtime(object):
         self._report_message(message, asis)
 
     def execute(self, task):
-        self.context.append(task)
-        try:
-            self._reset_path()
-            try:
-                task.execute(self)
-            except Exception:
-                self.error('task raised uncaught exception', True)
-                return False
-
-            duration = ''
-            if self.timing:
-                duration = ' (%s)' % task.duration
-
-            if task.status == task.COMPLETED:
-                self.report('task completed%s' % duration)
-                return True
-            elif task.status == task.SKIPPED:
-                self.report('task skipped')
-                return True
-            elif self.interactive:
-                return self.check('task failed%s; continue?' % duration)
+        if isinstance(task, basestring):
+            implementation = Tasks.get(task)
+            if implementation:
+                task = implementation(self)
             else:
-                self.error('task failed%s' % duration)
+                self.error('cannot find nested task %r' % task)
                 return False
+
+        if task.independent:
+            self._reset_path()
+
+        self.context.append(task.name)
+        try:
+            return task.execute(self)
         finally:
             self.context.pop()
 
@@ -276,20 +277,27 @@ class Runtime(object):
             else:
                 task = self._find_task(argument)
                 if task and task is not True:
-                    self.queue.append(task(self))
+                    self.queue.append(task(self, True))
                 elif task is False:
                     return False
 
-        if not self.queue:
+        if self.queue:
+            return self.run()
+        else:
             return True
-
-        for task in self.queue:
-            self.execute(task)
 
     def report(self, message, asis=False):
         if not message or self.quiet:
             return
         self._report_message(message, asis)
+
+    def run(self):
+        while self.queue:
+            task = self.queue.pop(0)
+            if self.execute(task) is not False:
+                self.completed.append(task)
+            else:
+                return False
 
     def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None):
         process = Process(cmdline, environ, shell)
@@ -391,7 +399,7 @@ class Runtime(object):
 
     def _report_message(self, message, asis=False):
         if self.context and not asis:
-            message = '[%s] %s' % (self.context[-1].name, message)
+            message = '[%s] %s' % (' '.join(self.context), message)
         if self.timestamps:
             message = '%s %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
         if message[-1] != '\n':
