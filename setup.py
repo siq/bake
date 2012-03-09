@@ -9,6 +9,6 @@ setup(
     author_email='mccoy.jordan@gmail.com',
     license='BSD',
     url='http://github.com/jordanm/bake',
-    packages=['bake'],
+    packages=['bake', 'bake.lib'],
     scripts=['bin/bake'],
 )
