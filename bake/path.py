@@ -1042,4 +1042,25 @@ class path(_base):
         def startfile(self):
             os.startfile(self)
 
-Path = path
+
+# additions to support scheme
+
+from scheme import Field, InvalidTypeError
+
+class Path(Field):
+    """A resource field for system path values."""
+
+    errors = {
+        'invalid': '%(field)s must be a valid path value',
+    }
+
+    def _serialize_value(self, value):
+        return str(value)
+
+    def _unserialize_value(self, value):
+        if value:
+            return path(value)
+        else:
+            return None
+
+__all__ = ['Path', 'path']

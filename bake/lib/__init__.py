@@ -1,3 +1,4 @@
+import bake.lib.git
 import bake.lib.misc
 import bake.lib.sphinx
 import bake.lib.svn

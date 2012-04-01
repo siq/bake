@@ -1,68 +1,52 @@
 from bake.path import path
 from bake.task import *
+from scheme import *
 
 class SubversionTask(Task):
-    params = [
-        param('svn.binary', 'path to svn binary', default='svn'),
-        param('svn.revision', 'subversion revision'),
-        param('svn.password', 'password for svn operation'),
-        param('svn.username', 'username for svn operation'),
-    ]
+    parameters = {
+        'binary': Text(description='path to svn binary', default='svn'),
+        'revision': Text(description='revision'),
+        'username': Text(description='username for authentication'),
+        'password': Text(description='password for authentication'),
+        'noauthcache': Boolean(description='do not cache authentication', default=False),
+    }
 
-    def _collate_options(self, environment):
+    def _collate_options(self):
         options = []
-        if environment['svn.revision']:
-            options.append('-r %s' % environment['svn.revision'])
-        if environment['svn.username']:
-            options.append('--username "%s"' % environment['svn.username'])
-        if environment['svn.password']:
-            options.append('--password "%s"' % environment['svn.password'])
+        if self['noauthcache']:
+            options.append('--no-auth-cache')
+        if self['revision']:
+            options.append('-r %s' % self['revision'])
+        if self['username']:
+            options.append('--username "%s"' % self['username'])
+        if self['password']:
+            options.append('--password "%s"' % self['password'])
         return options
 
 class SubversionCheckout(SubversionTask):
-    name = 'svn:checkout'
-    description = 'checks out a subversion repo'
-    params = [
-        param('svn.path', 'path to destination directory'),
-        param('svn.url', 'url to subversion repo', required=True),
-    ]
+    name = 'svn.checkout'
+    description = 'checks out a subversion repository'
+    parameters = {
+        'path': Text(description='path to destination directory'),
+        'url': Text(description='url of subversion repository', required=True),
+    }
 
-    def run(self, runtime, environment):
-        options = [environment['svn.binary'], 'co'] + self._collate_options(environment)
-        options.append(environment['svn.url'])
-
-        if environment['svn.path']:
-            options.append(environment['svn.path'])
-
+    def run(self, runtime):
+        options = [self['binary'], 'co'] + self._collate_options() + [self['url']]
+        if self['path']:
+            options.append(self['path'])
         runtime.shell(options)
 
 class SubversionExport(SubversionTask):
-    name = 'svn:export'
-    description = 'exports a subversion repo'
-    params = [
-        param('svn.path', 'path to destination directory'),
-        param('svn.url', 'url to subversion repo', required=True),
-    ]
+    name = 'svn.export'
+    description = 'exports a subversion repository'
+    parameters = {
+        'path': Text(description='path to destination directory'),
+        'url': Text(description='url of subversion repository', required=True),
+    }
 
-    def run(self, runtime, environment):
-        options = [environment['svn.binary'], 'export'] + self._collate_options(environment)
-        options.append(environment['svn.url'])
-
-        if environment['svn.path']:
-            options.append(environment['svn.path'])
-
-        runtime.shell(options)
-
-class SubversionUpdate(SubversionTask):
-    name = 'svn:update'
-    description = 'updates a subversion checkout'
-    params = [
-        param('svn.path', 'path to destination directory'),
-    ]
-
-    def run(self, runtime, environment):
-        options = [environment['svn.binary'], 'up'] + self._collate_options(environment)
-        if environment['svn.path']:
-            options.append(environment['svn.path'])
-
+    def run(self, runtime):
+        options = [self['binary'], 'export'] + self._collate_options() + [self['url']]
+        if self['path']:
+            options.append(self['path'])
         runtime.shell(options)

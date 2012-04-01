@@ -7,10 +7,11 @@ from datetime import datetime
 from operator import attrgetter
 from traceback import format_exc
 
-from bake.environment import Environment
+from bake.environment import *
+from bake.exceptions import *
 from bake.path import path
 from bake.process import Process
-from bake.task import MultipleTasksError, Tasks, Task, TaskError, UnknownTaskError
+from bake.task import Tasks, Task
 from bake.util import import_object, import_source, topological_sort
 
 BAKEFILES = ('bakefile', 'bakefile.py')
@@ -36,6 +37,7 @@ class OptionParser(optparse.OptionParser):
         ('-p, --path PATH', 'run tasks under specified path'),
         ('-P, --pythonpath PATH', 'add specified path to python path'),
         ('-q, --quiet', 'only log error messages'),
+        ('-S, --strict', 'only honor explicitly specified parameters'),
         ('-t, --timestamps', 'include timestamps on all log messages'),
         ('-T, --timing', 'display timing information for each task'),
         ('-v, --verbose', 'log all messages'),
@@ -46,7 +48,7 @@ class OptionParser(optparse.OptionParser):
         optparse.OptionParser.__init__(self, add_help_option=False)
         self.set_defaults(dryrun=False, help=False, interactive=False, nosearch=False,
             nobakefile=False, quiet=False, verbose=False, version=False, nocache=False,
-            timing=False)
+            strict=False, timing=False)
 
         self.add_option('-c', '--cache', dest='cache')
         self.add_option('-C', '--no-cache', action='store_true', dest='nocache')
@@ -61,6 +63,7 @@ class OptionParser(optparse.OptionParser):
         self.add_option('-p', '--path', dest='path')
         self.add_option('-P', '--pythonpath', action='append', dest='pythonpath')
         self.add_option('-q', '--quiet', action='store_true', dest='quiet')
+        self.add_option('-S', '--strict', action='store_true', dest='strict')
         self.add_option('-t', '--timestamps', action='store_true', dest='timestamps')
         self.add_option('-T', '--timing', action='store_true', dest='timing')
         self.add_option('-v', '--verbose', action='store_true', dest='verbose')
@@ -104,12 +107,12 @@ class OptionParser(optparse.OptionParser):
         optional = []
 
         length = 0
-        for param in task.params:
-            length = max(length, len(param.name))
-            if param.required:
-                required.append(param)
+        for name, parameter in task.configuration.iteritems():
+            length = max(length, len(name))
+            if parameter.required:
+                required.append(parameter)
             else:
-                optional.append(param)
+                optional.append(parameter)
 
         template = '  %%-%ds    %%s' % length
         indent = ' ' * (length + 6)
@@ -142,14 +145,13 @@ class Runtime(object):
     """The bake runtime."""
 
     flags = ('dryrun', 'interactive', 'nobakefile', 'nocache', 'nosearch',
-        'quiet', 'timestamps', 'timing', 'verbose')
+        'quiet', 'strict', 'timestamps', 'timing', 'verbose')
 
-    def __init__(self, executable='bake', environment=None, stream=sys.stdout, logger=None, **params):
+    def __init__(self, executable='bake', environment=None, stream=sys.stdout, **params):
         self.completed = []
         self.context = []
         self.environment = Environment(environment or {})
         self.executable = executable
-        self.logger = logger
         self.queue = []
         self.stream = stream
 
@@ -162,6 +164,7 @@ class Runtime(object):
         self.nosearch = params.get('nosearch', False)
         self.path = params.get('path', None)
         self.quiet = params.get('quiet', False)
+        self.strict = params.get('strict', False)
         self.timestamps = params.get('timestamps', False)
         self.timing = params.get('timing', False)
         self.verbose = params.get('verbose', False)
@@ -194,7 +197,7 @@ class Runtime(object):
 
         self.context.append(task.name)
         try:
-            return task.execute(self)
+            return task.execute()
         finally:
             self.context.pop()
 

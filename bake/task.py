@@ -2,34 +2,13 @@ from datetime import datetime
 from textwrap import dedent
 from types import FunctionType
 
+from scheme import Structure
+
+from bake.environment import *
+from bake.exceptions import *
 from bake.util import call_with_supported_params, propagate_traceback
 
-__all__ = ('Task', 'TaskError', 'param', 'requires', 'task')
-
-class param(object):
-    """A task parameter."""
-
-    def __init__(self, name, description=None, required=False, default=None):
-        self.default = default
-        self.description = description
-        self.name = name
-        self.required = required
-
-    def __call__(self, function):
-        try:
-            function.params.append(self)
-        except AttributeError:
-            function.params = [self]
-        return function
-
-class TaskError(Exception):
-    pass
-
-class MultipleTasksError(TaskError):
-    pass
-
-class UnknownTaskError(TaskError):
-    pass
+__all__ = ('Task', 'TaskError', 'parameter', 'requires', 'task')
 
 class Tasks(object):
     by_fullname = {}
@@ -45,7 +24,7 @@ class Tasks(object):
 
         candidate = cls.by_name.get(name)
         if isinstance(candidate, set):
-            raise MultipleTasksError('multiple tasks found for name %r' % name)
+            raise MultipleTasksError(candidate)
         elif candidate:
             return candidate
         else:
@@ -53,26 +32,27 @@ class Tasks(object):
 
 class TaskMeta(type):
     def __new__(metatype, name, bases, namespace):
-        declared_params = namespace.pop('params', [])
         task = type.__new__(metatype, name, bases, namespace)
-
-        params = {}
-        for base in reversed(bases):
-            inherited_params = getattr(base, 'params', None)
-            if inherited_params:
-                for param in inherited_params:
-                    params[param.name] = param
-
-        for param in declared_params:
-            params[param.name] = param
-
-        task.params = params.values()
         if task.name is None or not task.supported:
             return task
 
-        task.fullname = task.name
+        parameters = {}
+        for base in reversed(bases):
+            inherited = getattr(base, 'parameters', None)
+            if inherited:
+                parameters.update(inherited)
+
+        if task.parameters:
+            parameters.update(task.parameters)
+
+        task.configuration = {}
+        for name, parameter in parameters.iteritems():
+            parameter.name = '%s.%s' % (task.name, name)
+            task.configuration[parameter.name] = parameter
+
+        task.fullname = task.__name__
         if task.__module__ != '__main__':
-            task.fullname = '%s.%s' % (task.__module__, task.name)
+            task.fullname = '%s.%s' % (task.__module__, task.__name__)
 
         Tasks.by_fullname[task.fullname] = task
         if task.name in Tasks.by_name:
@@ -109,12 +89,12 @@ class Task(object):
     PENDING = 'pending'
     SKIPPED = 'skipped'
 
+    configuration = None
     description = None
-    fullname = None
     implementation = None
     name = None
     notes = None
-    params = []
+    parameters = None
     requires = []
     source = None
     supports_dryrun = False
@@ -122,6 +102,7 @@ class Task(object):
 
     def __init__(self, runtime, independent=False):
         self.dependencies = set()
+        self.environment = None
         self.exception = None
         self.finished = None
         self.independent = independent
@@ -129,25 +110,50 @@ class Task(object):
         self.started = None
         self.status = self.PENDING
 
+    def __repr__(self):
+        return '%s(status=%r)' % (type(self).__name__, self.status)
+
+    def __getitem__(self, name):
+        if not self.environment:
+            raise RuntimeError()
+        if name[:len(self.name)] != self.name:
+            name = '%s.%s' % (self.name, name)
+        return self.environment.find(name)
+
+    def __setitem__(self, name, value):
+        if not self.environment:
+            raise RuntimeError()
+        if name[:len(self.name)] != self.name:
+            name = '%s.%s' % (self.name, name)
+        self.environment.set(name, value)
+
     @property
     def duration(self):
         return '%0.03fs' % (self.finished - self.started).total_seconds()
 
-    def execute(self, runtime):
+    def execute(self):
+        runtime = self.runtime
         try:
-            self._execute_task(runtime)
-        except Exception:
+            self.environment = self._prepare_environment(runtime)
+        except RequiredParameterError, exception:
+            runtime.error('task requires parameter %r' % exception.args[0])
             self.status = self.FAILED
-            runtime.error('task failed, raising uncaught exception', True)
-            if runtime.interactive:
-                return runtime.check('task failed; continue?')
-            else:
-                return False
+            return False
+
+        if runtime.interactive and not self.supports_interactive:
+            if not runtime.check('execute task?', True):
+                self.status = self.SKIPPED
+
+        if runtime.dryrun and not self.supports_dryrun:
+            self.status = self.COMPLETED
+
+        if self.status == self.PENDING:
+            self._execute_task(runtime)
 
         duration = ''
         if runtime.timing:
             duration = ' (%s)' % self.duration
-
+        
         if self.status == self.COMPLETED:
             runtime.report('task completed%s' % duration)
             return True
@@ -160,39 +166,11 @@ class Task(object):
             runtime.error('task failed%s' % duration)
             return False
 
-    def run(self, runtime, environment):
-        raise NotImplementedError()
-
     def _execute_task(self, runtime):
-        environment = runtime.environment
-        for param in self.params:
-            try:
-                value = environment[param.name]
-            except ValueError:
-                runtime.error('task cannot run due to malformed value for %r' % param.name)
-                self.status = self.FAILED
-                return
-
-            if value is None:
-                if param.default is not None:
-                    environment[param.name] = param.default
-                elif param.required:
-                    runtime.error('task requires parameter %r' % param.name)
-                    self.status = self.FAILED
-                    return
-
-        implementation = self.implementation or self.run
-        if runtime.dryrun and not self.supports_dryrun:
-            self.status = self.COMPLETED
-            return
-        if runtime.interactive and not self.supports_interactive:
-            if not runtime.check('execute task?', True):
-                self.status = self.SKIPPED
-                return
-
         self.started = datetime.now()
         try:
-            call_with_supported_params(implementation, runtime=runtime, environment=environment)
+            call_with_supported_params(self.implementation or self.run,
+                runtime=runtime, environment=self.environment)
         except TaskError, exception:
             runtime.error(exception.args[0])
             self.status = self.FAILED
@@ -201,8 +179,37 @@ class Task(object):
             self.status = self.FAILED
         else:
             self.status = self.COMPLETED
+        finally:
+            self.finished = datetime.now()
 
-        self.finished = datetime.now()
+    def _prepare_environment(self, runtime):
+        environment = runtime.environment
+        if not self.configuration:
+            return environment
+
+        overlay = Environment()
+        for name, parameter in self.configuration.iteritems():
+            if runtime.strict:
+                value = environment.get(name)
+            else:
+                value = environment.find(name)
+            if value is not None:
+                overlay.set(name, parameter.process(value, serialized=True))
+            elif parameter.default is not None:
+                overlay.set(name, parameter.get_default())
+            elif parameter.required:
+                raise RequiredParameterError(name)
+
+        return environment.overlay(overlay)
+
+def parameter(name, field):
+    def decorator(function):
+        try:
+            function.parameters[name] = field
+        except AttributeError:
+            function.parameters = {name: field}
+        return function
+    return decorator
 
 def requires(*args):
     def decorator(function):
@@ -222,7 +229,7 @@ def task(name=None, description=None, supports_dryrun=False, supports_interactiv
             'implementation': staticmethod(function),
             'supports_dryrun': supports_dryrun,
             'supports_interactive': supports_interactive,
-            'params': getattr(function, 'params', []),
+            'parameters': getattr(function, 'parameters', None),
             'requires': getattr(function, 'requires', []),
         })
     return decorator

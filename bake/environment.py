@@ -2,227 +2,171 @@ import os
 import re
 from pprint import pformat
 
-from bake.util import import_object, import_source, recursive_merge
+from bake.util import recursive_merge
+from scheme.formats import Format, StructuredText
 
-class ParameterParser(object):
-    STRUCTURE_EXPR = re.compile(r'(?:\{[^{\[\]]*?\})|(?:\[[^{}\[]*?\])')
+__all__ = ('Environment', 'EnvironmentStack')
 
-    @classmethod
-    def parse(cls, value):
-        if value[0] in ('{', '['):
-            return cls._parse_structured_value(value)
-        else:
-            return cls._parse_simple_value(value)
+null = object()
 
-    @classmethod
-    def _parse_simple_value(cls, value):
-        candidate = value.lower()
-        if candidate == 'true':
-            return True
-        elif candidate == 'false':
-            return False
-
-        if '.' in value:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                pass
-
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return value
-
-    @classmethod
-    def _parse_structure(cls, text, structures):
-        head, tail = text[0], text[-1]
-        if head == '{' and tail == '}':
-            tokens = text[1:-1]
-            if tokens:
-                try:
-                    pairs = []
-                    for pair in tokens.split(','):
-                        key, value = pair.split(':')
-                        if value in structures:
-                            value = structures[value]
-                        else:
-                            value = cls._parse_simple_value(value)
-                        pairs.append((key, value))
-                    return dict(pairs)
-                except Exception:
-                    raise ValueError(value)
-            else:
-                return {}
-        elif head == '[' and tail == ']':
-            tokens = text[1:-1]
-            if tokens:
-                values = []
-                for value in tokens.split(','):
-                    if value in structures:
-                        value = structures[value]
-                    else:
-                        value = cls._parse_simple_value(value)
-                    values.append(value)
-                return values
-            else:
-                return []
-        else:
-            raise ValueError(value)
-
-    @classmethod
-    def _parse_structured_value(cls, value):
-        expr = cls.STRUCTURE_EXPR
-        structures = {}
-
-        def replace(match):
-            token = '||%d||' % len(structures)
-            structures[token] = cls._parse_structure(match.group(0), structures)
-            return token
-
-        while True:
-            value, count = expr.subn(replace, value)
-            if count == 0:
-                return structures[value]
-
-class Environment(dict):
+class Environment(object):
     """A bake runtime environment."""
 
-    Parsers = {}
+    def __init__(self, environment=None):
+        self.environment = environment or {}
 
-    def __getitem__(self, key):
-        if '.' not in key:
-            try:
-                return super(Environment, self).__getitem__(key)
-            except KeyError:
-                return None
+    def __repr__(self):
+        return 'Environment(%r)' % self.environment
 
-        tokens = key.split('.')
+    def dump(self):
+        return pformat(self.environment)
+
+    def find(self, path, default=None):
+        if '.' not in path:
+            return self.environment.get(path, default)
+
+        tokens, name = path.rsplit('.', 1)
+        while True:
+            value = self.get('%s.%s' % (tokens, name), null)
+            if value is not null:
+                return value
+            if '.' in tokens:
+                tokens = tokens.rsplit('.', 1)[0]
+            else:
+                return self.environment.get(name, default)
+
+    def get(self, path, default=None):
+        if '.' not in path:
+            return self.environment.get(path, default)
+
+        tokens = path.split('.')
         tail = tokens.pop()
 
-        try:
-            ref = super(Environment, self).__getitem__(tokens.pop(0))
-        except KeyError:
-            return None
-
-        if not isinstance(ref, dict):
-            raise ValueError(key)
-
+        ref = self.environment
         for token in tokens:
             if token in ref:
                 ref = ref[token]
                 if not isinstance(ref, dict):
-                    raise ValueError(key)
+                    return default
             else:
-                return None
+                return default
+        else:
+            return ref.get(tail, default)
 
-        return ref.get(tail)
+    def has(self, path):
+        if '.' not in path:
+            return (path in self.environment)
 
-    def __setitem__(self, key, value):
-        if '.' not in key:
-            return super(Environment, self).__setitem__(key, value)
-
-        tokens = key.split('.')
+        tokens = path.split('.')
         tail = tokens.pop()
 
-        head = tokens.pop(0)
-        if head not in self:
-            super(Environment, self).__setitem__(head, {})
-
-        ref = self[head]
-        if not isinstance(ref, dict):
-            raise ValueError(key)
-
+        ref = self.environment
         for token in tokens:
-            if token not in ref:
-                ref[token] = {}
-            ref = ref[token]
-            if not isinstance(ref, dict):
-                raise ValueError(key)
-
-        ref[tail] = value
-
-    def dump(self):
-        return pformat(self)
+            if token in ref:
+                ref = ref[token]
+                if not isinstance(ref, dict):
+                    return False
+            else:
+                return False
+        else:
+            return (tail in ref)
 
     def merge(self, source):
-        recursive_merge(self, source)
+        recursive_merge(self.environment, source)
+        return self
+
+    def overlay(self, environment=None):
+        if not isinstance(environment, Environment):
+            environment = Environment(environment)
+        return EnvironmentStack(environment, self)
 
     def parse(self, path):
         if not os.path.exists(path):
             raise RuntimeError('cannot find %r' % path)
 
-        extension = os.path.splitext(path)[-1].lower()
-        if extension not in self.Parsers:
-            try:
-                source = self._parse_module(path)
-                if source:
-                    self.merge(source)
-            except Exception:
-                raise RuntimeError('cannot parse %r' % path)
-            else:
-                return
+        try:
+            data = Format.read(path)
+        except Exception:
+            raise RuntimeError('cannot parse %r' % path)
 
-        parser = self.Parsers[extension]
-        source = parser(path)
-        if source:
-            self.merge(source)
+        if data:
+            self.merge(data)
+        return self
 
     def parse_pair(self, pair):
-        key, value = pair.split('=', 1)
-        self.merge({key: ParameterParser.parse(value)})
+        path, value = pair.split('=', 1)
+        self.set(path, StructuredText.unserialize(value, True))
+        return self
 
-    @classmethod
-    def register(cls, *extensions):
-        def decorator(function):
-            for extension in extensions:
-                cls.Parsers[extension] = function
-            return function
-        return decorator
+    def set(self, path, value):
+        if '.' not in path:
+            self.environment[path] = value
+            return self
 
-    def _parse_module(self, path):
-        module = import_object(path)
-        namespace = {}
-        for attr in dir(module):
-            if attr[0] != '_':
-                namespace[attr] = getattr(module, attr)
-        return namespace
+        tokens = path.split('.')
+        tail = tokens.pop()
 
-@Environment.register('.cfg', '.cnf', '.ini')
-def parse_inifile(path):
-    from ConfigParser import SafeConfigParser
-    parser = SafeConfigParser()
+        ref = self.environment
+        for token in tokens:
+            if token not in ref:
+                ref[token] = {}
+            ref = ref[token]
+            if not isinstance(ref, dict):
+                raise ValueError(path)
 
-    openfile = open(path, 'r')
-    try:
-        parser.readfp(openfile)
-    finally:
-        openfile.close()
+        ref[tail] = value
+        return self
 
-    namespace = {}
-    for section in parser.sections():
-        namespace[section] = {}
-        for key, value in parser.items(section):
-            namespace[section][key] = parse_value(value)
-    return namespace
+    def underlay(self, environment=None):
+        if not isinstance(environment, Environment):
+            environment = Environment(environment)
+        return EnvironmentStack(self, environment)
 
-@Environment.register('.json')
-def parse_json(path):
-    import json
-    openfile = open(path, 'r')
-    try:
-        return json.load(openfile)
-    finally:
-        openfile.close()
+    def write(self, path, format=None, **params):
+        Format.write(path, self.environment, format, **params)
+        return self
 
-@Environment.register('.py')
-def parse_pyfile(path):
-    return import_source(path)
+class EnvironmentStack(object):
+    def __init__(self, *environments):
+        self.stack = environments
 
-@Environment.register('.yaml')
-def parse_yaml(path):
-    import yaml
-    openfile = open(path, 'r')
-    try:
-        return yaml.load(openfile.read())
-    finally:
-        openfile.close()
+    def find(self, path, default=None):
+        for environment in self.stack:
+            value = environment.find(path, null)
+            if value is not null:
+                return value
+        else:
+            return default
+
+    def get(self, path, default=None):
+        for environment in self.stack:
+            value = environment.get(path, null)
+            if value is not null:
+                return value
+        else:
+            return default
+
+    def has(self, path):
+        for environment in self.stack:
+            if environment.has(path):
+                return True
+        else:
+            return False
+
+    def overlay(self, environment=None):
+        if not isinstance(environment, Environment):
+            environment = Environment(environment)
+
+        stack = [environment] + self.stack[:]
+        return EnvironmentStack(*stack)
+
+    def set(self, path, value):
+        self.stack[0].set(path, value)
+        return self
+
+    def underlay(self, environment=None):
+        if not isinstance(environment, Environment):
+            environment = Environment(environment)
+
+        stack = self.stack[:] + [environment]
+        return EnvironmentStack(*stack)
