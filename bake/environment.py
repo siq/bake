@@ -75,9 +75,11 @@ class Environment(object):
         recursive_merge(self.environment, source)
         return self
 
-    def overlay(self, environment=None):
+    def overlay(self, environment=None, **params):
         if not isinstance(environment, Environment):
             environment = Environment(environment)
+        if params:
+            environment.environment.update(params)
         return EnvironmentStack(environment, self)
 
     def parse(self, path):
@@ -117,9 +119,11 @@ class Environment(object):
         ref[tail] = value
         return self
 
-    def underlay(self, environment=None):
+    def underlay(self, environment=None, **params):
         if not isinstance(environment, Environment):
             environment = Environment(environment)
+        if params:
+            environment.environment.update(params)
         return EnvironmentStack(self, environment)
 
     def write(self, path, format=None, **params):
@@ -128,7 +132,7 @@ class Environment(object):
 
 class EnvironmentStack(object):
     def __init__(self, *environments):
-        self.stack = environments
+        self.stack = list(environments)
 
     def find(self, path, default=None):
         for environment in self.stack:
@@ -153,9 +157,11 @@ class EnvironmentStack(object):
         else:
             return False
 
-    def overlay(self, environment=None):
+    def overlay(self, environment=None, **params):
         if not isinstance(environment, Environment):
             environment = Environment(environment)
+        if params:
+            environment.environment.update(params)
 
         stack = [environment] + self.stack[:]
         return EnvironmentStack(*stack)
@@ -164,9 +170,11 @@ class EnvironmentStack(object):
         self.stack[0].set(path, value)
         return self
 
-    def underlay(self, environment=None):
+    def underlay(self, environment=None, **params):
         if not isinstance(environment, Environment):
             environment = Environment(environment)
+        if params:
+            environment.environment.update(params)
 
         stack = self.stack[:] + [environment]
         return EnvironmentStack(*stack)

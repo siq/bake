@@ -189,7 +189,10 @@ class Runtime(object):
             message = '%s\n%s' % (message.rstrip(), format_exc())
         self._report_message(message, asis)
 
-    def execute(self, task):
+    def execute(self, task, environment=None, **params):
+        if environment or params:
+            environment = self.environment.overlay(environment, **params)
+
         if isinstance(task, basestring):
             task = Tasks.get(task)(self)
         if task.independent:
@@ -197,7 +200,7 @@ class Runtime(object):
 
         self.context.append(task.name)
         try:
-            return task.execute()
+            return task.execute(environment)
         finally:
             self.context.pop()
 

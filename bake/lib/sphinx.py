@@ -34,10 +34,17 @@ class SphinxTask(Task):
 class BuildHtml(SphinxTask):
     name = 'sphinx.html'
     description = 'build html documentation using sphinx'
+    parameters = {
+        'view': Boolean(description='view documentation after build', default=False),
+    }
 
     def run(self, runtime):
         options = self._collate_options([self['binary'], '-b html'])
         runtime.shell(' '.join(options))
+
+        if self['view']:
+            import webbrowser
+            webbrowser.open('file://%s' % str(self['outdir'] / 'index.html'))
 
 class CleanDocs(SphinxTask):
     name = 'sphinx.clean'
