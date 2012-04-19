@@ -1,3 +1,5 @@
+#from __future__ import absolute_import
+
 from bake.path import *
 from bake.task import *
 from scheme import *

@@ -201,7 +201,6 @@ class Task(object):
             elif parameter.required:
                 raise RequiredParameterError(name)
 
-
         return environment.overlay(overlay)
 
 def parameter(name, field):

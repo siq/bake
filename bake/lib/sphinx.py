@@ -1,3 +1,5 @@
+#from __future__ import absolute_import
+
 from bake.path import Path, path
 from bake.task import *
 from scheme import Boolean, Text
