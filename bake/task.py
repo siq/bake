@@ -2,7 +2,7 @@ from datetime import datetime
 from textwrap import dedent
 from types import FunctionType
 
-from scheme import Structure
+from scheme import Structure, Text
 
 from bake.environment import *
 from bake.exceptions import *
@@ -203,7 +203,10 @@ class Task(object):
 
         return environment.overlay(overlay)
 
-def parameter(name, field):
+def parameter(name, field=None):
+    if not field:
+        field = Text(nonnull=True)
+
     def decorator(function):
         try:
             function.parameters[name] = field

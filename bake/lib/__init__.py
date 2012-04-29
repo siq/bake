@@ -1,3 +1,4 @@
+import bake.lib.alembic
 import bake.lib.git
 import bake.lib.misc
 import bake.lib.sphinx
