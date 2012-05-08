@@ -166,11 +166,19 @@ class Task(object):
             runtime.error('task failed%s' % duration)
             return False
 
+    def finalize(self, runtime):
+        pass
+
+    def prepare(self, runtime):
+        pass
+
     def _execute_task(self, runtime):
         self.started = datetime.now()
         try:
+            self.prepare(runtime)
             call_with_supported_params(self.implementation or self.run,
                 runtime=runtime, environment=self.environment)
+            self.finalize(runtime)
         except TaskError, exception:
             runtime.error(exception.args[0])
             self.status = self.FAILED

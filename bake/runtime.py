@@ -6,6 +6,7 @@ from ConfigParser import SafeConfigParser
 from datetime import datetime
 from operator import attrgetter
 from traceback import format_exc
+from urllib import urlretrieve
 
 from bake.environment import *
 from bake.exceptions import *
@@ -281,6 +282,12 @@ class Runtime(object):
         if not message or self.quiet:
             return
         self._report_message(message, asis)
+
+    def retrieve(self, url, filename):
+        try:
+            urlretrieve(url, filename)
+        except Exception:
+            raise
 
     def run(self):
         queue = self.queue
