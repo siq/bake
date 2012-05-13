@@ -326,8 +326,10 @@ class Runtime(object):
             else:
                 return False
 
-    def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None):
-        process = Process(cmdline, environ, shell)
+    def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None,
+            merge_output=False):
+
+        process = Process(cmdline, environ, shell, merge_output)
         process.run(self, data, timeout)
         return process
 

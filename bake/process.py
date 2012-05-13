@@ -8,7 +8,8 @@ class ProcessFailure(Exception):
     pass
 
 class Process(object):
-    def __init__(self, cmdline, environ=None, shell=False):
+    def __init__(self, cmdline, environ=None, shell=False, merge_output=False):
+        self.merge_output = merge_output
         self.process = None
         self.returncode = None
         self.shell = shell
@@ -30,6 +31,10 @@ class Process(object):
             runtime.info('shell: %s' % ' '.join(self.cmdline))
 
         def _thread():
+            stderr = subprocess.PIPE
+            if self.merge_output:
+                stderr = subprocess.STDOUT
+
             self.process = subprocess.Popen(
                 self.cmdline,
                 bufsize=0,
@@ -38,7 +43,7 @@ class Process(object):
                 cwd=cwd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=stderr,
                 universal_newlines=True,
             )
             self.stdout, self.stderr = self.process.communicate(data)
