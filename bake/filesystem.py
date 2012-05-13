@@ -38,3 +38,9 @@ class Collation(object):
                     break
     
         self.directories = directories
+        return self
+
+    def report(self, filepath):
+        filepath = path(filepath)
+        filepath.write_bytes('\n'.join(self.filepaths))
+

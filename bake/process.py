@@ -21,13 +21,21 @@ class Process(object):
 
         self.cmdline = self._parse_cmdline(cmdline)
 
-    def __call__(self, data=None, timeout=None, stream=None):
+    def __call__(self, data=None, timeout=None, runtime=None, cwd=None):
+        stream = None
+        if runtime and runtime.verbose and False:
+            stream = runtime.stream
+
+        if runtime:
+            runtime.info('shell: %s' % ' '.join(self.cmdline))
+
         def _thread():
             self.process = subprocess.Popen(
                 self.cmdline,
                 bufsize=0,
                 env=self.environ,
                 shell=self.shell,
+                cwd=cwd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -57,17 +65,7 @@ class Process(object):
             thread.join()
 
         self.returncode = self.process.returncode
-        return self.returncode
-
-    def run(self, runtime, data=None, timeout=None):
-        stream = None
-        if runtime.verbose:
-            stream = runtime.stream
-
-        runtime.info('shell: %s' % ' '.join(self.cmdline))
-        returncode = self(data, timeout, stream)
-
-        if runtime.verbose:
+        if runtime and runtime.verbose:
             lines = []
             if self.stdout:
                 lines.extend(self.stdout.strip().split('\n'))
@@ -76,6 +74,10 @@ class Process(object):
             lines = '\n'.join('  %s' % line for line in lines)
             runtime.info(lines, True)
 
+        return self.returncode
+
+    def run(self, runtime, data=None, timeout=None, cwd=None):
+        returncode = self(data, timeout, runtime, cwd)
         if returncode != 0:
             raise ProcessFailure(returncode, self)
 
@@ -83,3 +85,4 @@ class Process(object):
         if isinstance(cmdline, basestring) and not self.shell:
             cmdline = shlex.split(cmdline)
         return cmdline
+

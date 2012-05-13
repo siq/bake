@@ -109,6 +109,9 @@ class OptionParser(optparse.OptionParser):
 
         length = 0
         for name, parameter in task.configuration.iteritems():
+            if parameter.hidden:
+                continue
+
             length = max(length, len(name))
             if parameter.required:
                 required.append(parameter)
@@ -169,6 +172,15 @@ class Runtime(object):
         self.timestamps = params.get('timestamps', False)
         self.timing = params.get('timing', False)
         self.verbose = params.get('verbose', False)
+
+    @property
+    def curdir(self):
+        return path(os.getcwd())
+
+    def chdir(self, path):
+        curdir = self.curdir
+        os.chdir(str(path))
+        return curdir
 
     def check(self, message, default=False):
         token = {True: 'y', False: 'n'}[default]

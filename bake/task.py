@@ -179,6 +179,9 @@ class Task(object):
             call_with_supported_params(self.implementation or self.run,
                 runtime=runtime, environment=self.environment)
             self.finalize(runtime)
+        except RequiredParameterError, exception:
+            runtime.error('task requires parameter %r' % exception.args[0])
+            self.status = self.FAILED
         except TaskError, exception:
             runtime.error(exception.args[0])
             self.status = self.FAILED
