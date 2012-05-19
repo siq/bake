@@ -42,5 +42,4 @@ class Collation(object):
 
     def report(self, filepath):
         filepath = path(filepath)
-        filepath.write_bytes('\n'.join(self.filepaths))
-
+        filepath.write_bytes('\n'.join(self.filepaths) + '\n')

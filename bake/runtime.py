@@ -327,11 +327,10 @@ class Runtime(object):
                 return False
 
     def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None,
-            merge_output=False):
+            merge_output=False, passthrough=True):
 
-        passthrough = False
-        if self.verbose:
-            passthrough = True
+        if passthrough:
+            passthrough = self.verbose
 
         process = Process(cmdline, environ, shell, merge_output, passthrough)
         process.run(self, data, timeout)
