@@ -30,7 +30,7 @@ class SphinxTask(Task):
             self['outdir'] = sourcedir / 'html'
 
         options = options or []
-        options += ['-d %s' % self['cachedir'], str(sourcedir), str(self['outdir'])]
+        options += ['-N', '-d %s' % self['cachedir'], str(sourcedir), str(self['outdir'])]
         return options
 
 class BuildHtml(SphinxTask):
