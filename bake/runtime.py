@@ -179,6 +179,9 @@ class Runtime(object):
 
     def chdir(self, path):
         curdir = self.curdir
+        if self.verbose:
+            self.info('changing directory to %s' % path)
+
         os.chdir(str(path))
         return curdir
 
