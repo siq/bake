@@ -7,6 +7,9 @@ class RequiredParameterError(BakeError):
 class TaskError(BakeError):
     """A task error."""
 
+class TaskFailed(BakeError):
+    """A task failed."""
+
 class MultipleTasksError(TaskError):
     """Multiple tasks with the same name exist."""
 

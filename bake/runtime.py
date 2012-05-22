@@ -216,7 +216,8 @@ class Runtime(object):
 
         self.context.append(task.name)
         try:
-            return task.execute(environment)
+            if task.execute(environment) is False:
+                raise TaskFailed()
         finally:
             self.context.pop()
 
@@ -324,10 +325,12 @@ class Runtime(object):
 
         while self.queue:
             task = self.queue.pop(0)
-            if self.execute(task) is not False:
-                self.completed.append(task)
-            else:
+            try:
+                self.execute(task)
+            except TaskFailed:
                 return False
+            else:
+                self.completed.append(task)
 
     def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None,
             merge_output=False, passthrough=True):
@@ -462,4 +465,5 @@ def run():
         runtime.error('aborted')
         exitcode = 1
 
+    print 
     sys.exit(exitcode)
