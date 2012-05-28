@@ -1,3 +1,4 @@
+import os
 from inspect import getargspec
 from sys import exc_info
 from traceback import format_tb
@@ -8,6 +9,26 @@ def call_with_supported_params(callable, **params):
         if key not in arguments:
             del params[key]
     return callable(**params)
+
+def execute_python_shell(code=None, ipython=False):
+    arguments = ['python', '-i']
+    if ipython:
+        try:
+            import IPython
+            arguments = ['ipython', '-i']
+        except ImportError:
+            pass
+
+    if code:
+        source = []
+        for line in code.strip().split('\n'):
+            line = line.strip()
+            if line:
+                source.append(line)
+        if source:
+            arguments.extend(['-c', ';'.join(source)])
+
+    os.execvp(arguments[0], arguments)
 
 def import_object(path):
     attr = None
@@ -23,7 +44,7 @@ def import_object(path):
             return getattr(__import__(path, None, None, [attr]), attr)
         else:
             raise
-    
+
 def import_source(path, namespace=None):
     namespace = namespace or {}
     container = {}
