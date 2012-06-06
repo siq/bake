@@ -11,8 +11,10 @@ except ImportError:
 else:
     from alembic import command
 
+
+
 class AlembicTask(Task):
-    supported = bool(alembic)
+    supported = False
     parameters = {
         'path': Path(description='path to migrations directory', required=True),
         'url': Text(description='sqlalchemy url', required=True),

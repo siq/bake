@@ -33,7 +33,7 @@ class Tasks(object):
 class TaskMeta(type):
     def __new__(metatype, name, bases, namespace):
         task = type.__new__(metatype, name, bases, namespace)
-        if task.name is None or not task.supported:
+        if not task.supported:
             return task
 
         parameters = {}
@@ -44,6 +44,10 @@ class TaskMeta(type):
 
         if task.parameters:
             parameters.update(task.parameters)
+
+        task.parameters = parameters
+        if task.name is None:
+            return task
 
         task.configuration = {}
         for name, parameter in parameters.iteritems():
