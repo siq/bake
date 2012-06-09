@@ -30,6 +30,31 @@ def execute_python_shell(code=None, ipython=False):
 
     os.execvp(arguments[0], arguments)
 
+def get_package_data(module, path):
+    openfile = open(get_package_path(module, path))
+    try:
+        return openfile.read()
+    finally:
+        openfile.close()
+
+def get_package_path(module, path):
+    if isinstance(module, basestring):
+        module = __import__(module, None, None, [module.split('.')[-1]])
+    if not isinstance(module, list):
+        module = module.__path__
+
+    modulepath = module[0]
+    for prefix in sys.path:
+        if prefix in ('', '..'):
+            prefix = os.getcwd()
+        fullpath = os.path.abspath(os.path.join(prefix, modulepath))
+        if os.path.exists(fullpath):
+            break
+    else:
+        return None
+
+    return os.path.join(fullpath, path)
+
 def import_object(path):
     attr = None
     if ':' in path:
