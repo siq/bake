@@ -1,4 +1,10 @@
+import os
 from distutils.core import setup
+
+packages = []
+for root, dirs, files in os.walk('bake'):
+    if '__init__.py' in files:
+        packages.append(root.replace('/', '.'))
 
 setup(
     name='bake',
@@ -9,7 +15,7 @@ setup(
     author_email='mccoy.jordan@gmail.com',
     license='BSD',
     url='http://github.com/jordanm/bake',
-    packages=['bake', 'bake.lib'],
+    packages=packages,
     scripts=['bin/bake'],
     classifiers=[
         'Development Status :: 3 - Alpha',
