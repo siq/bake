@@ -1,7 +1,6 @@
 import os
 from inspect import getargspec
-from sys import exc_info
-import sys.path
+import sys
 from traceback import format_tb
 
 def call_with_supported_params(callable, **params):
@@ -83,7 +82,7 @@ def import_source(path, namespace=None):
         openfile.close()
 
 def propagate_traceback(exception):
-    traceback = exc_info()[2]
+    traceback = sys.exc_info()[2]
     if traceback is not None:
         traceback = ''.join(format_tb(traceback))
         if hasattr(exception, 'traceback'):
