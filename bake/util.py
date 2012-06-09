@@ -1,6 +1,7 @@
 import os
 from inspect import getargspec
 from sys import exc_info
+import sys.path
 from traceback import format_tb
 
 def call_with_supported_params(callable, **params):
