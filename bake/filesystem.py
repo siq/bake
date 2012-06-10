@@ -1,3 +1,5 @@
+import tarfile
+
 from bake.path import path
 
 class Collation(object):
@@ -43,3 +45,20 @@ class Collation(object):
     def report(self, filepath):
         filepath = path(filepath)
         filepath.write_bytes('\n'.join(self.filepaths) + '\n')
+
+    def tar(self, filename, transforms=None, compression='bz2'):
+        openfile = tarfile.open(filename, 'w:' + compression)
+        try:
+            for filepath in self.filepaths:
+                arcname = filepath
+                if transforms:
+                    arcname = self._transform_filepath(filepath, transforms)
+                openfile.add(filepath, arcname, recursive=False)
+        finally:
+            openfile.close()
+
+    def _transform_filepath(self, filepath, transforms):
+        for prefix, repl in transforms.iteritems():
+            if filepath.startswith(prefix):
+                return filepath.replace(prefix, repl)
+        return filepath
