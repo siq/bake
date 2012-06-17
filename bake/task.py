@@ -51,8 +51,8 @@ class TaskMeta(type):
 
         task.configuration = {}
         for name, parameter in parameters.iteritems():
-            parameter.name = '%s.%s' % (task.name, name)
-            task.configuration[parameter.name] = parameter
+            name = '%s.%s' % (task.name, name)
+            task.configuration[name] = parameter.clone(name=name)
 
         task.fullname = task.__name__
         if task.__module__ != '__main__':
