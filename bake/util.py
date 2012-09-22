@@ -1,6 +1,8 @@
 import os
-from inspect import getargspec
 import sys
+from inspect import getargspec
+from tempfile import mkstemp
+from textwrap import dedent
 from traceback import format_tb
 
 def call_with_supported_params(callable, **params):
@@ -15,18 +17,16 @@ def execute_python_shell(code=None, ipython=False):
     if ipython:
         try:
             import IPython
-            arguments = ['ipython', '-i']
         except ImportError:
             pass
+        else:
+            arguments = ['ipython', '-i']
 
     if code:
-        source = []
-        for line in code.strip().split('\n'):
-            line = line.strip()
-            if line:
-                source.append(line)
-        if source:
-            arguments.extend(['-c', ';'.join(source)])
+        fileno, filename = mkstemp('.py', 'bake')
+        os.write(fileno, dedent(code))
+        os.close(fileno)
+        arguments.append(filename)
 
     os.execvp(arguments[0], arguments)
 
