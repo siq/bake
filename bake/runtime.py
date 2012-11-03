@@ -294,6 +294,11 @@ class Runtime(object):
             self.error(exception.args[0])
             return False
 
+    def linefeed(self, n=1):
+        if self.quiet:
+            return
+        self._report_message('\n' * n, True)
+
     def report(self, message, asis=False):
         if not message or self.quiet:
             return
