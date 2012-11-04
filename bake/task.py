@@ -1,3 +1,4 @@
+import repr as reprlib
 from datetime import datetime
 from textwrap import dedent
 from types import FunctionType
@@ -210,7 +211,7 @@ class Task(object):
                 value = environment.find(name)
             if value is not None:
                 overlay.set(name, parameter.process(value, serialized=True))
-                runtime.info('%s = %r' % (name, value))
+                runtime.info('%s = %s' % (name, reprlib.repr(value)))
             elif parameter.default is not None:
                 overlay.set(name, parameter.get_default())
             elif parameter.required:
