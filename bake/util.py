@@ -13,7 +13,7 @@ def call_with_supported_params(callable, **params):
     return callable(**params)
 
 def execute_python_shell(code=None, ipython=False):
-    arguments = ['python', '-i']
+    arguments = [sys.executable, '-i']
     if ipython:
         try:
             import IPython
