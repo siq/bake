@@ -1045,19 +1045,19 @@ class path(_base):
 
 # additions to support scheme
 
-from scheme import Field, InvalidTypeError
+from scheme import Error, Field, InvalidTypeError
 
 class Path(Field):
     """A resource field for system path values."""
 
-    errors = {
-        'invalid': '%(field)s must be a valid path value',
-    }
+    errors = [
+        Error('invalid', 'invalid value', '%(field)s must be a valid path value'),
+    ]
 
     def _serialize_value(self, value):
         return str(value)
 
-    def _unserialize_value(self, value):
+    def _unserialize_value(self, value, ancestry):
         if value:
             return path(value)
         else:
