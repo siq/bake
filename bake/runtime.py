@@ -1,3 +1,4 @@
+import shlex
 import optparse
 import os
 import sys
@@ -346,6 +347,11 @@ class Runtime(object):
         process = Process(cmdline, environ, shell, merge_output, passthrough)
         process.run(self, data, timeout)
         return process
+
+    def spawn(self, cmdline):
+        if isinstance(cmdline, basestring):
+            cmdline = shlex.split(cmdline)
+        os.execvp(cmdline[0], cmdline)
 
     def _display_help(self, parser, arguments):
         if not arguments:

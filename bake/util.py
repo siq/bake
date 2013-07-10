@@ -70,14 +70,13 @@ def import_object(path):
         else:
             raise
 
-def import_source(path, namespace=None):
-    namespace = namespace or {}
-    container = {}
+def import_source(path):
+    namespace = {}
 
     openfile = open(path, 'r')
     try:
-        exec openfile in namespace, container
-        return container
+        exec(openfile, namespace)
+        return namespace
     finally:
         openfile.close()
 
