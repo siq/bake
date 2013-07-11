@@ -396,10 +396,15 @@ class Runtime(object):
         process.run(self, data, timeout)
         return process
 
-    def spawn(self, cmdline):
+    def spawn(self, cmdline, environment=None):
         if isinstance(cmdline, basestring):
             cmdline = shlex.split(cmdline)
-        os.execvp(cmdline[0], cmdline)
+        if environment:
+            environ = dict(os.environ)
+            environ.update(environment)
+            os.execvpe(cmdline[0], cmdline, environ)
+        else:
+            os.execvp(cmdline[0], cmdline)
 
     def _display_help(self, parser, arguments):
         if not arguments:
