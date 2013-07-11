@@ -6,6 +6,8 @@ import textwrap
 from ConfigParser import SafeConfigParser
 from datetime import datetime
 from operator import attrgetter
+from tempfile import mkstemp
+from textwrap import dedent
 from traceback import format_exc
 from urllib import urlretrieve
 
@@ -263,13 +265,13 @@ class Runtime(object):
             modules.update(os.environ[ENV_MODULES].split(' '))
 
         for module in modules:
-            if self._load_target(module) is False:
+            if self.load(module) is False:
                 return False
         
         if not self.nobakefile:
             bakefile = self._find_bakefile(options.nosearch)
             if bakefile:
-                if self._load_target(bakefile) is False:
+                if self.load(bakefile) is False:
                     return False
 
         if options.help:
@@ -299,6 +301,44 @@ class Runtime(object):
         if self.quiet:
             return
         self._report_message('\n' * n, True)
+
+    def load(self, target):
+        environment = None
+        try:
+            if target[-3:] == '.py':
+                Tasks.current_source = path(target).relpath()
+                try:
+                    namespace = import_source(target)
+                finally:
+                    Tasks.current_source = None
+                environment = namespace.get('environment')
+            else:
+                module = import_object(target)
+                environment = getattr(module, 'environment', None)
+        except Exception:
+            if self.interactive:
+                if not self.check('failed to load %r; continue?' % target):
+                    return False
+            else:
+                self.error('failed to load %r' % target, True)
+                return False
+
+        if environment and isinstance(environment, dict):
+            self.environment.merge(environment)
+
+    def prompt(self, message, default=None):
+        if self.context:
+            message = '[%s] %s' % (' '.join(self.context), message)
+        if default is not None:
+            message = '%s [%s] ' % (message, default)
+        else:
+            message = '%s ' % message
+
+        response = raw_input(message)
+        if response == '':
+            return default
+        else:
+            return response
 
     def report(self, message, asis=False):
         if not message or self.quiet:
@@ -337,6 +377,14 @@ class Runtime(object):
                 return False
             else:
                 self.completed.append(task)
+
+    def run_script(self, script):
+        fileno, filename = mkstemp('.sh', 'bake')
+        os.write(fileno, dedent(script))
+        os.close(fileno)
+
+        self.shell(['bash', '-x', filename], merge_output=True)
+        os.unlink(filename)
 
     def shell(self, cmdline, data=None, environ=None, shell=False, timeout=None,
             merge_output=False, passthrough=True):
@@ -405,30 +453,6 @@ class Runtime(object):
                 return False
         else:
             return task
-
-    def _load_target(self, target):
-        environment = None
-        try:
-            if target[-3:] == '.py':
-                Tasks.current_source = path(target).relpath()
-                try:
-                    namespace = import_source(target)
-                finally:
-                    Tasks.current_source = None
-                environment = namespace.get('environment')
-            else:
-                module = import_object(target)
-                environment = getattr(module, 'environment', None)
-        except Exception:
-            if self.interactive:
-                if not self.check('failed to load %r; continue?' % target):
-                    return False
-            else:
-                self.error('failed to load %r' % target, True)
-                return False
-
-        if environment and isinstance(environment, dict):
-            self.environment.merge(environment)
 
     def _parse_source(self, path):
         try:

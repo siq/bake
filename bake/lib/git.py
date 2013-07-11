@@ -7,12 +7,13 @@ from bake.task import *
 class Repository(object):
     """A git repository."""
 
-    def __init__(self, root, binary='git'):
+    def __init__(self, root, runtime=None, binary='git'):
         if not isinstance(root, path):
             root = path(root)
 
         self.binary = binary
-        self.root = root.abspath()
+        self.root = root.expanduser().abspath()
+        self.runtime = runtime
 
     @property
     def tags(self):
@@ -22,16 +23,22 @@ class Repository(object):
         self.execute(['checkout', commit])
 
     def clone(self, url):
-        self.execute(['clone', url, str(self.root)], False)
+        self.execute(['clone', url, str(self.root)], False, True)
 
-    def execute(self, tokens, cwd=True):
+    def execute(self, tokens, cwd=True, passthrough=False, root=None, passive=False):
+        root = root or self.root
         if cwd:
-            cwd = str(self.root)
+            cwd = str(root)
         else:
             cwd = None
 
         process = Process([self.binary] + tokens)
-        if process(cwd=cwd) == 0:
+        if passthrough and self.runtime and self.runtime.verbose:
+            process.merge_output = True
+            process.passthrough = True
+
+        returncode = process(runtime=self.runtime, cwd=cwd)
+        if passive or returncode == 0:
             return process
         else:
             raise RuntimeError(process.stderr or '')
