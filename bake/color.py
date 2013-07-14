@@ -3,20 +3,21 @@ import re
 try:
     import colorama
 except ImportError:
-    colorama = None
+    colorama = Tokens = Reset = None
 else:
     from colorama import Fore, Back, Style
     colorama.init()
+    Tokens = {
+        'b': Fore.BLUE,
+        'c': Fore.CYAN,
+        'g': Fore.GREEN,
+        'm': Fore.MAGENTA,
+        'r': Fore.RED,
+        'y': Fore.YELLOW,
+    }
+    Reset = Style.RESET_ALL
 
 TokenPattern = re.compile(r'\[!([bcgmryBCGMRY])?\]')
-Tokens = {
-    'b': Fore.BLUE,
-    'c': Fore.CYAN,
-    'g': Fore.GREEN,
-    'm': Fore.MAGENTA,
-    'r': Fore.RED,
-    'y': Fore.YELLOW,
-}
 
 def _replace_tokens(match):
     token = match.group(1)
@@ -32,8 +33,8 @@ def _replace_tokens(match):
 def ansify(value, colorize=False, reset=True):
     if colorama and colorize:
         value = TokenPattern.sub(_replace_tokens, value)
+        if reset:
+            value = value + Reset
+        return value
     else:
         return TokenPattern.sub('', value)
-    if reset:
-        value = value + Style.RESET_ALL
-    return value
