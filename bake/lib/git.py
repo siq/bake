@@ -46,6 +46,9 @@ class Repository(object):
         else:
             raise RuntimeError(process.stderr or '')
 
+    def exists(self):
+        return self.root.exists()
+
     def get_current_branch(self):
         process = self.execute(['rev-parse', '--abbrev-ref', 'HEAD'])
         return process.stdout.strip()

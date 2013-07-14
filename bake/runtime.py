@@ -209,7 +209,7 @@ class Runtime(object):
         if not message:
             return
         if exception:
-            message = '%s\n%s' % (message.rstrip(), format_exc())
+            message = '[!R]%s[!]\n%s' % (message.rstrip(), format_exc())
         self._report_message(message, asis)
 
     def execute(self, task, environment=None, **params):
