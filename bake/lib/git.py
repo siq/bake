@@ -25,6 +25,9 @@ class Repository(object):
     def clone(self, url):
         self.execute(['clone', url, str(self.root)], False, True)
 
+    def create_tag(self, tag, message):
+        self.execute(['tag', '-a', tag, '-m', '"%s"' % message])
+
     def execute(self, tokens, cwd=True, passthrough=False, root=None, passive=False):
         root = root or self.root
         if cwd:
@@ -43,6 +46,10 @@ class Repository(object):
         else:
             raise RuntimeError(process.stderr or '')
 
+    def get_current_branch(self):
+        process = self.execute(['rev-parse', '--abbrev-ref', 'HEAD'])
+        return process.stdout.strip()
+
     def get_current_hash(self):
         process = self.execute(['log', '-1', '--pretty=format:%H'])
         return process.stdout.strip()
@@ -56,8 +63,20 @@ class Repository(object):
         if process.returncode == 0:
             return process.stdout
 
-    def create_tag(self, tag, message):
-        self.execute(['tag', '-a', tag, '-m', '"%s"' % message])
+    def is_repository(self):
+        return (self.root / '.git').exists()
+
+    def is_on_master(self):
+        return (self.get_current_branch() == 'master')
+
+    def pull(self, fastforward_only=True, passthrough=True):
+        tokens = ['pull']
+        if fastforward_only:
+            tokens.append('--ff-only')
+
+        process = self.execute(tokens, passthrough=passthrough)
+        if not passthrough:
+            return process.stdout
 
 class GitTask(Task):
     parameters = {
