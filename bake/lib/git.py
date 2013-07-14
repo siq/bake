@@ -43,9 +43,18 @@ class Repository(object):
         else:
             raise RuntimeError(process.stderr or '')
 
+    def get_current_hash(self):
+        process = self.execute(['log', '-1', '--pretty=format:%H'])
+        return process.stdout.strip()
+
     def get_file(self, filename, commit='HEAD'):
         filename = '%s:%s' % (commit, filename)
         return self.execute(['show', filename]).stdout
+
+    def get_status(self):
+        process = self.execute(['status', '-s'], passive=True)
+        if process.returncode == 0:
+            return process.stdout
 
     def create_tag(self, tag, message):
         self.execute(['tag', '-a', tag, '-m', '"%s"' % message])

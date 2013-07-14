@@ -18,10 +18,13 @@ class Tasks(object):
     current_source = None
 
     @classmethod
-    def get(cls, name):
+    def get(cls, name, prefix=None):
         task = cls.by_fullname.get(name)
         if task:
             return task
+
+        if prefix and not name.startswith(prefix):
+            name = prefix + name
 
         candidate = cls.by_name.get(name)
         if isinstance(candidate, set):
@@ -160,15 +163,15 @@ class Task(object):
             duration = ' (%s)' % self.duration
         
         if self.status == self.COMPLETED:
-            runtime.report('task completed%s' % duration)
+            runtime.report('[!G]task completed[!]%s' % duration)
             return True
         elif self.status == self.SKIPPED:
-            runtime.report('task skipped')
+            runtime.report('[!Y]task skipped[!]')
             return True
         elif runtime.interactive:
-            return runtime.check('task failed%s; continue?' % duration)
+            return runtime.check('[!R]task failed[!]%s; continue?' % duration)
         else:
-            runtime.error('task failed%s' % duration)
+            runtime.error('[!R]task failed[!]%s' % duration)
             return False
 
     def finalize(self, runtime):

@@ -11,6 +11,7 @@ from textwrap import dedent
 from traceback import format_exc
 from urllib import urlretrieve
 
+from bake.color import ansify
 from bake.environment import *
 from bake.exceptions import *
 from bake.path import path
@@ -28,8 +29,7 @@ Useful information here.
 
 class OptionParser(optparse.OptionParser):
     options = (
-        ('-c, --cache FILE', 'use specified file as build cache'),
-        ('-C, --no-cache', 'ignore build cache'),
+        ('-c, --color', 'use color in output'),
         ('-d, --dryrun', 'run tasks in dry-run mode'),
         ('-e, --env FILE', 'populate runtime environment with specified file'),
         ('-h, --help [TASK]', 'display help on specified task'),
@@ -39,6 +39,7 @@ class OptionParser(optparse.OptionParser):
         ('-n, --nosearch', 'do not search parent directories for bakefile'),
         ('-N, --nobakefile', 'do not use bakefile'),
         ('-p, --path PATH', 'run tasks under specified path'),
+        ('    --prefix PREFIX', 'apply specified prefix to task names'),
         ('-P, --pythonpath PATH', 'add specified path to python path'),
         ('-q, --quiet', 'only log error messages'),
         ('-S, --strict', 'only honor explicitly specified parameters'),
@@ -50,12 +51,11 @@ class OptionParser(optparse.OptionParser):
 
     def __init__(self):
         optparse.OptionParser.__init__(self, add_help_option=False)
-        self.set_defaults(dryrun=False, help=False, interactive=False, nosearch=False,
-            nobakefile=False, quiet=False, verbose=False, version=False, nocache=False,
+        self.set_defaults(color=False, dryrun=False, help=False, interactive=False,
+            nosearch=False, nobakefile=False, quiet=False, verbose=False, version=False,
             strict=False, timing=False)
 
-        self.add_option('-c', '--cache', dest='cache')
-        self.add_option('-C', '--no-cache', action='store_true', dest='nocache')
+        self.add_option('-c', '--color', action='store_true', dest='color')
         self.add_option('-d', '--dryrun', action='store_true', dest='dryrun')
         self.add_option('-e', '--env', action='append', dest='sources')
         self.add_option('-h', '--help', action='store_true', dest='help')
@@ -63,8 +63,9 @@ class OptionParser(optparse.OptionParser):
         self.add_option('-l', '--log', dest='logfile')
         self.add_option('-m', '--module', action='append', dest='modules')
         self.add_option('-n', '--nosearch', action='store_true', dest='nosearch')
-        self.add_option('-N', '--nobaked', action='store_true', dest='nobaked')
+        self.add_option('-N', '--nobakefile', action='store_true', dest='nobakefile')
         self.add_option('-p', '--path', dest='path')
+        self.add_option('--prefix', dest='prefix')
         self.add_option('-P', '--pythonpath', action='append', dest='pythonpath')
         self.add_option('-q', '--quiet', action='store_true', dest='quiet')
         self.add_option('-S', '--strict', action='store_true', dest='strict')
@@ -151,25 +152,28 @@ class OptionParser(optparse.OptionParser):
 class Runtime(object):
     """The bake runtime."""
 
-    flags = ('dryrun', 'interactive', 'nobakefile', 'nocache', 'nosearch',
+    flags = ('color', 'dryrun', 'interactive', 'nobakefile', 'nosearch',
         'quiet', 'strict', 'timestamps', 'timing', 'verbose')
 
-    def __init__(self, executable='bake', environment=None, stream=sys.stdout, **params):
+    def __init__(self, executable='bake', environment=None, stream=sys.stdout,
+            modules=None, **params):
+
         self.completed = []
         self.context = []
         self.environment = Environment(environment or {})
         self.executable = executable
+        self.modules = set(modules or [])
         self.queue = []
         self.stream = stream
 
-        self.cache = params.get('cache', None)
+        self.color = params.get('color', False)
         self.dryrun = params.get('dryrun', False)
         self.interactive = params.get('interactive', False)
         self.logfile = params.get('logfile', None)
         self.nobakefile = params.get('nobakefile', False)
-        self.nocache = params.get('nocache', False)
         self.nosearch = params.get('nosearch', False)
         self.path = params.get('path', None)
+        self.prefix = params.get('prefix', None)
         self.quiet = params.get('quiet', False)
         self.strict = params.get('strict', False)
         self.timestamps = params.get('timestamps', False)
@@ -247,6 +251,8 @@ class Runtime(object):
 
         if options.logfile:
             self.logfile = options.logfile
+        if options.prefix:
+            self.prefix = options.prefix
 
         for addition in (options.pythonpath or []):
             sys.path.insert(0, addition)
@@ -260,7 +266,9 @@ class Runtime(object):
         else:
             self.path = os.getcwd()
 
-        modules = set(options.modules or [])
+        modules = self.modules
+        if options.modules:
+            modules.update(options.modules)
         if ENV_MODULES in os.environ:
             modules.update(os.environ[ENV_MODULES].split(' '))
 
@@ -328,13 +336,13 @@ class Runtime(object):
 
     def prompt(self, message, default=None):
         if self.context:
-            message = '[%s] %s' % (' '.join(self.context), message)
+            message = '[!b][%s][!] %s' % (' '.join(self.context), message)
         if default is not None:
             message = '%s [%s] ' % (message, default)
         else:
             message = '%s ' % message
 
-        response = raw_input(message)
+        response = raw_input(ansify(message, self.color))
         if response == '':
             return default
         else:
@@ -446,7 +454,7 @@ class Runtime(object):
 
     def _find_task(self, name):
         try:
-            task = Tasks.get(name)
+            task = Tasks.get(name, self.prefix)
         except MultipleTasksError, exception:
             self.error('multiple tasks!!!')
             return False
@@ -477,13 +485,13 @@ class Runtime(object):
 
     def _report_message(self, message, asis=False):
         if self.context and not asis:
-            message = '[%s] %s' % (' '.join(self.context), message)
+            message = '[!b][%s][!] %s' % (' '.join(self.context), message)
         if self.timestamps:
-            message = '%s %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
+            message = '[!b]%s[!] %s' % (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), message)
         if message[-1] != '\n':
             message += '\n'
 
-        self.stream.write(message)
+        self.stream.write(ansify(message, self.color))
         self.stream.flush()
 
     def _reset_path(self):
@@ -498,12 +506,11 @@ class Runtime(object):
                     self.error('failed to changed path to %r' % path)
                     return False
 
-def run():
-    runtime = Runtime(os.path.basename(sys.argv[0]))
+def run(**params):
+    runtime = Runtime(os.path.basename(sys.argv[0]), **params)
     exitcode = 0
     if runtime.invoke(sys.argv[1:]) is False:
         runtime.error('aborted')
         exitcode = 1
 
-    print 
     sys.exit(exitcode)
