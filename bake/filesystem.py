@@ -42,9 +42,12 @@ class Collation(object):
         self.directories = directories
         return self
 
-    def report(self, filepath):
-        filepath = path(filepath)
-        filepath.write_bytes('\n'.join(self.filepaths) + '\n')
+    def report(self, filepath, transforms=None):
+        reportpath = path(filepath)
+        for filepath in self.filepaths:
+            if transforms:
+                filepath = self._transform_filepath(filepath, transforms)
+            reportpath.write_text(filepath + '\n', append=True)
 
     def tar(self, filename, transforms=None, compression='bz2'):
         openfile = tarfile.open(filename, 'w:' + compression)
