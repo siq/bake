@@ -1,3 +1,24 @@
 #!/usr/bin/env python
+
+def _adjust_for_fips():
+    ''' Manipulate sys.path if FIPS is enabled. '''
+    import os, sys
+    FIPS_ENABLED = '/proc/sys/crypto/fips_enabled'
+    SIQHASHLIB = 'siqhashlib'
+
+    with open(FIPS_ENABLED, 'r') as fsin:
+        try:
+            fips_enabled = bool(int(fsin.readline().strip()))
+        except Exception:
+            fips_enabled = False
+    if fips_enabled:
+        sitepkgs=''
+        for p in sys.path:
+            if p.endswith('site-packages'):
+                sitepkgs = p
+                break
+        sys.path = [os.path.join(sitepkgs, SIQHASHLIB)] + sys.path
+_adjust_for_fips()
+
 from bake.runtime import run
 run()
