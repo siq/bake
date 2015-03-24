@@ -22,7 +22,7 @@ class Collation(object):
             subject = subject.abspath()
             if subject.isdir():
                 self.directories.append(str(subject))
-            elif subject.isfile():
+            elif subject.isfile() or subject.islink():
                 self.files[str(subject)] = subject.read_hexhash('sha1')
 
     def prune(self, other):
